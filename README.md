@@ -103,5 +103,5 @@ nonebot_plugin_mai_arcade 是一个基于本地数据的多功能机厅排卡报
 ### 效果图
 (待传)
 
-### 特别感谢
+## ✨ 特别感谢
 - [Yzfoil/nonebot_plugin_maimai_go_down_system](https://github.com/Yzfoil/nonebot_plugin_maimai_go_down_system) 提供的灵感与代码支持
