@@ -8,7 +8,7 @@
 
 _✨ NoneBot2 插件 用于为maimai玩家提供机厅人数上报、排卡功能支持 ✨_
 
-
+<a href="./LICENSE">
 </a>
 <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
 
