@@ -6,7 +6,7 @@
   
 # nonebot-plugin-mai-arcade
 
-_✨ NoneBot 插件简单描述 ✨_
+_✨ NoneBot2 插件 用于为maimai玩家提供机厅人数上报、排卡功能支持 ✨_
 
 
 </a>
