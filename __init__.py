@@ -10,21 +10,24 @@ from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
 from nonebot.rule import ArgumentParser
+from pathlib import Path
 
 
 __plugin_meta__ = PluginMetadata(
     name="nonebot_plugin_mai_arcade",
     description="舞萌机厅插件",
     usage="",
+    type="application",
+    homepage="https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade",
     config=Config,
 )
 
 global_config = get_driver().config
 config = Config.parse_obj(global_config)
-
+config_dict = Config.parse_obj(get_driver().config.dict())
 
 data_json={}
-data_path=r"D:\NoneBot2\yuuzuki\src\plugins\nonebot_plugin_mai_arcade\data.json"
+data_path=Path(config_dict.mai_arcade_path)
 
 
 
@@ -33,35 +36,33 @@ def init_data():
     with open(data_path , encoding='utf-8') as f:
         data_json=json.load(f)
 
-# 初始化和加载数据
 init_data()
 
-go_on=on_command("上机")#将当前第一位排队的移至最后
-get_in=on_command("排卡")#加入排队队列
-get_run=on_command("退勤")#退出排队队列
-show_list=on_command("排卡现状")#展示排队队列
-add_group=on_command("添加群聊")#添加群聊到json
-delete_group=on_command("删除群聊")#从json删除群聊
-shut_down=on_command("闭店")#清空排队队列
-add_arcade=on_command("添加机厅")#添加机厅到群聊
-delete_arcade=on_command("删除机厅")#删除群聊中的机厅
-show_arcade=on_command("机厅列表")#展示机厅列表
-put_off=on_command("延后")#将自己延后一位
+go_on=on_command("上机")
+get_in=on_command("排卡")
+get_run=on_command("退勤")
+show_list=on_command("排卡现状")
+add_group=on_command("添加群聊")
+delete_group=on_command("删除群聊")
+shut_down=on_command("闭店")
+add_arcade=on_command("添加机厅")
+delete_arcade=on_command("删除机厅")
+show_arcade=on_command("机厅列表")
+put_off=on_command("延后")
 add_alias=on_command("添加机厅别名")
 delete_alias=on_command("删除机厅别名", aliases={"移除机厅别名"})
 get_arcade_alias =on_command("机厅别名")
 add_arcade_map=on_command("添加机厅地图")
 delete_arcade_map=on_command("删除机厅地图", aliases={"移除机厅地图"})
-get_arcade_map = on_command("机厅地图", aliases={"音游地图"})#展示机厅音游地图
-sv_arcade=on_regex(r'^(?!.*[+-]\d+)(.*?)\d+$|^(.*?)[+-=]+$', priority=15)#编辑机厅人数
-sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)#展示机厅人数
-query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)#展示机厅人数列表
+get_arcade_map = on_command("机厅地图", aliases={"音游地图"})
+sv_arcade=on_regex(r'^(?!.*[+-]\d+)(.*?)\d+$|^(.*?)[+-=]+$', priority=15)
+sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
+query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)
 scheduler = require('nonebot_plugin_apscheduler').scheduler
 
 superusers = get_driver().config.superusers
 def is_superuser_or_admin(event: GroupMessageEvent) -> bool:
     user_id = str(event.user_id)
-    # 检查是否是超级用户或管理员/群主
     return event.sender.role in ["admin", "owner"] or user_id in superusers
 
 @scheduler.scheduled_job('cron', hour=0, minute=0)
@@ -115,7 +116,6 @@ async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
         alias_list.append(alias)
         data_json[group_id][name]["alias_list"] = alias_list
 
-        # 假设这里有一个异步函数来写入 JSON 数据到文件中
         await re_write_json()
 
         await add_alias.finish(f"已成功为 '{name}' 添加别名 '{alias}'")
@@ -158,7 +158,6 @@ async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
         alias_list.remove(alias)
         data_json[group_id][name]["alias_list"] = alias_list
 
-        # 假设这里有一个异步函数来写入 JSON 数据到文件中
         await re_write_json()
 
         await delete_alias.finish(f"已成功删除 '{name}' 的别名 '{alias}'")
@@ -185,7 +184,7 @@ async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent):
     if group_id in data_json:
         found = False
         for name in data_json[group_id]:
-            # 检查是否匹配机厅名称或别名列表中的别名
+            # Check if it matches an alias in the hall name or alias list
             if name == query_name or ('alias_list' in data_json[group_id][name] and query_name in data_json[group_id][name]['alias_list']):
                 found = True
                 if 'alias_list' in data_json[group_id][name] and data_json[group_id][name]['alias_list']:
@@ -215,9 +214,9 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
     special_match = re.match(special_pattern, input_str)
     if special_match:
         groups = special_match.groups()
-        room_name_or_alias = (groups[0] or groups[2]).strip()  # 处理两个可能的捕获组
+        room_name_or_alias = (groups[0] or groups[2]).strip()
         new_num_str = groups[1] if groups[1] is not None else re.search(r'\d+$', input_str).group()
-        new_num = int(new_num_str)  # 将提取的数字字符串转换为整数
+        new_num = int(new_num_str)
 
         if new_num_str is not None:
             new_num = int(new_num_str)
@@ -305,24 +304,19 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
     input_str = event.raw_message.strip()
     group_id = str(event.group_id)
 
-    # 修改匹配指令格式的正则表达式
-    pattern = r'^([\u4e00-\u9fa5\w]+)([几j]\d*人?)$'  # 匹配格式为中文、英文、数字等组成，末尾是几、j、几人
+    pattern = r'^([\u4e00-\u9fa5\w]+)([几j]\d*人?)$'
     match = re.match(pattern, input_str)
     if not match:
         return
 
-    # 提取参数
-    name_part = match.group(1).strip()  # 机厅名或别名部分
-    num_part = match.group(2).strip()   # 几、j、几人部分
+    name_part = match.group(1).strip() 
+    num_part = match.group(2).strip() 
 
     if group_id in data_json:
         found_arcade = None
-
-        # 首先尝试匹配机厅名
         if name_part in data_json[group_id]:
             found_arcade = name_part
         else:
-            # 否则尝试匹配别名列表
             for arcade_name, arcade_info in data_json[group_id].items():
                 alias_list = arcade_info.get("alias_list", [])
                 if name_part in alias_list:
@@ -333,12 +327,11 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
             arcade_info = data_json[group_id][found_arcade]
             num_list = arcade_info.setdefault("num", [])
             
-            if not num_list:  # 如果num_list为空
+            if not num_list: 
                 await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 今日人数尚未更新")
             else:
                 current_num = sum(num_list)
                 
-                # 获取更新者和更新时间，如果不存在则直接输出人数
                 last_updated_by = arcade_info.get("last_updated_by")
                 last_updated_at = arcade_info.get("last_updated_at")
 
@@ -357,16 +350,14 @@ async def handle_query_updated_arcades(bot: Bot, event: Event, state: T_State):
     global data_json
     group_id = str(event.group_id)
 
-    # 构建回复消息的列表
     reply_messages = []
 
     if group_id in data_json:
         for arcade_name, arcade_info in data_json[group_id].items():
             num_list = arcade_info.get("num", [])
             if num_list:
-                # 检查最后更新时间是否有内容
                 last_updated_at = arcade_info.get("last_updated_at")
-                if last_updated_at:  # 如果有最后更新时间
+                if last_updated_at: 
                     current_num = sum(num_list)
                     last_updated_by = arcade_info.get("last_updated_by", "未知用户")
                     update_info = f" [{arcade_name}] 当前人数为 {current_num} "
@@ -420,7 +411,6 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
         found = False
         target_room = None
 
-        # 检查输入的名称是否直接是机厅名或是其别名
         for room_name, room_data in data_json[group_id].items():
             if room_name == name:
                 found = True
@@ -474,7 +464,6 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
         found = False
         target_room = None
 
-        # 检查输入的名称是否直接是机厅名或是其别名
         for room_name, room_data in data_json[group_id].items():
             if room_name == name:
                 found = True
@@ -513,7 +502,6 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
         found = False
         target_room = None
 
-        # 检查输入的名称是否直接是机厅名或是其别名
         for room_name, room_data in data_json[group_id].items():
             if room_name == name:
                 found = True
@@ -543,7 +531,7 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
     #    if m['user_id'] == event.user_id:
     #        break
     #su=get_driver().config.superusers
-    #if str(event.get_user_id()) != '347492847' or str(event.get_user_id()) != '1415279603':
+    #if str(event.get_user_id()) != '12345678' or str(event.get_user_id()) != '2330370458':
     #   if m['role'] != 'owner' and m['role'] != 'admin' and str(m['user_id']) not in su:
     #        await add_group.finish("只有管理员对排卡功能进行设置")
     if not is_superuser_or_admin(event):
@@ -560,7 +548,6 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
         
 @delete_group.handle()
 async def handle_delete_group(bot: Bot, event: GroupMessageEvent, state: T_State):
-    # 检查用户权限，只有管理员和群主可以删除群聊
     if not is_superuser_or_admin(event):
         await delete_group.finish("只有管理员能够删除群聊")
 
@@ -570,7 +557,7 @@ async def handle_delete_group(bot: Bot, event: GroupMessageEvent, state: T_State
         await delete_group.finish("当前群聊不在名单中，无法删除")
     else:
         data_json.pop(group_id)
-        await re_write_json()  # 保存修改后的 json 文件
+        await re_write_json() 
         await delete_group.finish(f"已从名单中删除当前群聊")
 
 @add_arcade.handle()
@@ -644,8 +631,7 @@ async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
             return
         
         data_json[group_id][name]['map'].append(url)
-        
-        # 假设这里有一个异步函数来写入 JSON 数据到文件中
+
         await re_write_json()
         
         await add_arcade_map.finish(f"已成功为 '{name}' 添加机厅地图网址 '{url}'")
@@ -684,8 +670,7 @@ async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
             return
         
         data_json[group_id][name]['map'].remove(url)
-        
-        # 假设这里有一个异步函数来写入 JSON 数据到文件中
+
         await re_write_json()
         
         await delete_arcade_map.finish(f"已成功从 '{name}' 删除机厅地图网址 '{url}'")
@@ -709,7 +694,6 @@ async def handle_get_arcade_map(bot: Bot, event: GroupMessageEvent):
     if group_id in data_json:
         found = False
         for name in data_json[group_id]:
-            # 检查是否匹配机厅名称或别名列表中的别名
             if name == query_name or ('alias_list' in data_json[group_id][name] and query_name in data_json[group_id][name]['alias_list']):
                 found = True
                 if 'map' in data_json[group_id][name] and data_json[group_id][name]['map']:
@@ -765,7 +749,7 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
     else:
         await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员")
 
-async def re_write_json():#复写json文档
+async def re_write_json():
     global data_json
     with open(data_path , 'w' , encoding='utf-8') as f:
         json.dump(data_json , f , indent=4, ensure_ascii=False)
