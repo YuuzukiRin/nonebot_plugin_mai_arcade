@@ -9,11 +9,6 @@
 _✨ NoneBot 插件简单描述 ✨_
 
 
-<a href="./LICENSE">
-    <img src="https://img.shields.io/github/license/YuuzukiRin/nonebot-plugin-mai-arcade.svg" alt="license">
-</a>
-<a href="https://pypi.python.org/pypi/nonebot-plugin-mai-arcade">
-    <img src="https://img.shields.io/pypi/v/nonebot-plugin-mai-arcade.svg" alt="pypi">
 </a>
 <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="python">
 
