@@ -1,11 +1,9 @@
 <div align="center">
-  <a href="https://v2.nonebot.dev/store"><img src="https://github.com/A-kirami/nonebot-plugin-mai-arcade/blob/resources/nbp_logo.png" width="180" height="180" alt="NoneBotPluginLogo"></a>
-  <br>
-  <p><img src="https://github.com/A-kirami/nonebot-plugin-mai-arcade/blob/resources/NoneBotPlugin.svg" width="240" alt="NoneBotPluginText"></p>
-</div>
 
-<div align="center">
-
+  <a href="https://v2.nonebot.dev/">
+    <img src="https://v2.nonebot.dev/logo.png" width="200" height="200" alt="nonebot">
+  </a>
+  
 # nonebot-plugin-mai-arcade
 
 _✨ NoneBot 插件简单描述 ✨_
@@ -70,6 +68,7 @@ nonebot_plugin_mai_arcade 是一个基于本地数据的多功能机厅排卡报
 | <机厅名>=num/<机厅名>num| 群员 | 否 | 群聊 | 机厅的人数重置为num |
 | <机厅名>几/几人/j | 群员 | 否 | 群聊 | 展示机厅当前的人数信息 |
 | mai/机厅人数 | 群员 | 否 | 群聊 | 展示当日已更新的所有机厅的人数列表 |
+
 | 机厅指令 | 权限 | 需要@ | 范围 | 说明 |
 |:-----:|:----:|:----:|:----:|:----:|
 | 添加群聊 | 管理 | 否 | 群聊 | 将群聊添加到JSON数据中 |
@@ -83,6 +82,7 @@ nonebot_plugin_mai_arcade 是一个基于本地数据的多功能机厅排卡报
 | 添加机厅地图 | 管理 | 否 | 群聊 | 添加机厅地图信息(网址) |
 | 删除机厅地图 | 管理 | 否 | 群聊 | 移除机厅地图信息 |
 | 机厅地图 | 群员 | 否 | 群聊 | 展示机厅音游地图列表 |
+
 | 排卡指令 | 权限 | 需要@ | 范围 | 说明 |
 |:-----:|:----:|:----:|:----:|:----:|
 | 排卡 | 群员 | 否 | 群聊 | 加入排队队列 |
