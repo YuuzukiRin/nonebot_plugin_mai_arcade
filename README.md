@@ -33,7 +33,7 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 
 <details open>
 <summary>直接下载</summary> 
-下载文件，将nonebot_plugin_mai_arcade文件夹放入您的nonebot2插件目录内(通常位于: 您的插件根目录\src\plugins)
+下载文件，将nonebot_plugin_mai_arcade文件夹放入您的nonebot2插件目录内(通常位于 : 您的插件根目录\src\plugins)
 </details>
 
 <details>
