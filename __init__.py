@@ -120,7 +120,7 @@ async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
 
         await add_alias.finish(f"已成功为 '{name}' 添加别名 '{alias}'")
     else:
-        await add_alias.finish("本群尚未开通排卡功能，请联系群主或管理员")
+        await add_alias.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
         
 @delete_alias.handle()
 async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
@@ -162,7 +162,7 @@ async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
 
         await delete_alias.finish(f"已成功删除 '{name}' 的别名 '{alias}'")
     else:
-        await delete_alias.finish("本群尚未开通排卡功能，请联系群主或管理员")
+        await delete_alias.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
         
 @get_arcade_alias.handle()
 async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent):
@@ -200,7 +200,7 @@ async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent):
         if not found:
             await get_arcade_alias.finish(f"找不到机厅或机厅别名为 '{query_name}' 的相关信息")
     else:
-        await get_arcade_alias.finish("本群尚未开通相关功能，请联系群主或管理员")
+        await get_arcade_alias.finish("本群尚未开通相关功能，请联系群主或管理员添加群聊")
         
 @sv_arcade.handle()
 async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
@@ -247,8 +247,8 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
                 return
 
         else:
-            return
             #await sv_arcade.finish(f"群聊 '{group_id}' 中不存在任何机厅")
+            return
 
         return
 
@@ -283,7 +283,6 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
                 delta = int(operation)
                 num_list.append(delta)
 
-            # 更新操作用户和时间，并删除之前的记录
             data_json[group_id][name]["last_updated_by"] = event.sender.nickname
             data_json[group_id][name]["last_updated_at"] = current_time
             data_json[group_id][name].pop("previous_update_by", None)
@@ -342,8 +341,8 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
         else:
             await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在机厅或机厅别名 '{name_part}'")
     else:
-        return
         #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在任何机厅")
+        return
                 
 @query_updated_arcades.handle()
 async def handle_query_updated_arcades(bot: Bot, event: Event, state: T_State):
@@ -392,7 +391,7 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
                     await go_on.finish(f"暂时未到您,请耐心等待")
         await go_on.finish(f"您尚未排卡")
     else:
-        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员")
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
 
 @get_in.handle()
 async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
@@ -432,7 +431,7 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
         else:
             await go_on.finish("没有该机厅，请使用添加机厅功能添加")
     else:
-        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员")
+        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
 
 @get_run.handle()
 async def handle_function(bot:Bot,event:GroupMessageEvent):
@@ -451,7 +450,7 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
                 await go_on.finish(MessageSegment.text(msg))
         await go_on.finish(f"今晚被白丝小萝莉魅魔榨精（您未加入排卡）")
     else:
-        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员")
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
 
 @show_list.handle()
 async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
@@ -486,7 +485,7 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
         else:
             await go_on.finish("没有该机厅，若需要可使用添加机厅功能")
     else:
-        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员")
+        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
 
 @shut_down.handle()
 async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
@@ -521,7 +520,7 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
         else:
             await go_on.finish("没有该机厅，若需要可使用添加机厅功能")
     else:
-        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员")
+        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
 
 @add_group.handle()
 async def handle_function(bot:Bot,event:GroupMessageEvent):
@@ -578,7 +577,7 @@ async def handle_function(bot:Bot,event:GroupMessageEvent,name_: Message = Comma
             await re_write_json()
             await add_arcade.finish(f"已添加当前机厅到群聊名单中")
     else:
-        await add_arcade.finish(f"本群尚未开通排卡功能,请联系群主或管理员")
+        await add_arcade.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
 
 @delete_arcade.handle()
 async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
@@ -598,7 +597,7 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
             await re_write_json()
             await delete_arcade.finish(f"已从群聊名单中删除机厅：{name}")
     else:
-        await delete_arcade.finish(f"本群尚未开通排卡功能，请联系群主或管理员")
+        await delete_arcade.finish(f"本群尚未开通排卡功能，请联系群主或管理员添加群聊")
 
 @add_arcade_map.handle()
 async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
@@ -636,7 +635,7 @@ async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
         
         await add_arcade_map.finish(f"已成功为 '{name}' 添加机厅地图网址 '{url}'")
     else:
-        await add_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员")
+        await add_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
         
 @delete_arcade_map.handle()
 async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
@@ -675,7 +674,7 @@ async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
         
         await delete_arcade_map.finish(f"已成功从 '{name}' 删除机厅地图网址 '{url}'")
     else:
-        await delete_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员")   
+        await delete_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")   
 
 @get_arcade_map.handle()
 async def handle_get_arcade_map(bot: Bot, event: GroupMessageEvent):
@@ -723,7 +722,7 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
             num=num+1
         await go_on.finish(MessageSegment.text(msg.rstrip('\n')))
     else:
-        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员")
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
 
 @put_off.handle()
 async def handle_function(bot:Bot,event:GroupMessageEvent):
@@ -747,7 +746,7 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
             num = num + 1
         await go_on.finish(f"您尚未排卡")
     else:
-        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员")
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
 
 async def re_write_json():
     global data_json
