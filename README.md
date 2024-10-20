@@ -28,7 +28,14 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 - [x]  添加机厅音游地图网址
 - [x]  显示群聊机厅地图列表
 - [x]  实现线上排卡功能
+- [x]  指定机厅排卡
+- [ ]  随个机厅出勤
+- [ ]  平均等待时间
+### 功能优势
 
+- 查询机厅人数显示最新上报用户及上报时间, 保证人数信息的实时性。
+- 使用 mai/机厅人数 指令能显示当日更新过人数的机厅列表(人数及上报用户、时间), 帮助群友选择出勤地点。
+- 使用 机厅地图 指令可上传、查看相应机厅音游地图网址, 便于快速查看机厅信息。
 ## 💿 安装
 
 <details open>
@@ -103,7 +110,11 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 | 闭店 | 管理 | 否 | 群聊 | 清空排队队列 |
 
 ### 效果图
+
+<details>
+<summary>展开</summary>
 (待传)
+</details>
 
 ## ✨ 特别感谢
 - [Yzfoil/nonebot_plugin_maimai_go_down_system](https://github.com/Yzfoil/nonebot_plugin_maimai_go_down_system) 提供的灵感与代码支持
