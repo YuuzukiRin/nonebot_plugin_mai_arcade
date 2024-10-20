@@ -37,7 +37,7 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 </details>
 
 <details>
-<summary>使用 nb-cli 安装</summary> (暂不可用)
+<summary>使用 nb-cli 安装</summary> 
 在 nonebot2 项目的根目录下打开命令行, 输入以下指令即可安装
 
     nb plugin install nonebot-plugin-mai-arcade
