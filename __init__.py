@@ -1,7 +1,6 @@
 import re
 import json
 import datetime
-from .config import Config
 from nonebot import get_driver, require, on_endswith, on_command, on_regex, on_fullmatch
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters import Bot, Event, Message
@@ -11,6 +10,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
 from nonebot.rule import ArgumentParser
 from pathlib import Path
+import nonebot
 
 
 __plugin_meta__ = PluginMetadata(
@@ -19,23 +19,22 @@ __plugin_meta__ = PluginMetadata(
     usage="",
     type="application",
     homepage="https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade",
-    config=Config,
+    supported_adapters={"~onebot.v11"},
 )
 
-config_dict = Config.parse_obj(get_driver().config.dict())
+config = get_driver().config
 
-if config_dict.mai_arcade_path:
-    mai_arcade_path = Path(config_dict.mai_arcade_path)
+if hasattr(config, 'mai_arcade_path'):
+    mai_arcade_path = Path(config.mai_arcade_path)
 else:
     mai_arcade_path = Path(__file__).parent
 
 data_path = mai_arcade_path / "data.json"
 
-
 def init_data():
     global data_json
-    with open(data_path , encoding='utf-8') as f:
-        data_json=json.load(f)
+    with open(data_path, encoding='utf-8') as f:
+        data_json = json.load(f)
 
 init_data()
 
@@ -753,3 +752,4 @@ async def re_write_json():
     global data_json
     with open(data_path , 'w' , encoding='utf-8') as f:
         json.dump(data_json , f , indent=4, ensure_ascii=False)
+        
