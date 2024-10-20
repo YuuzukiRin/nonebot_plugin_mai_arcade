@@ -33,13 +33,13 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 
 下载文件，将nonebot_plugin_mai_arcade文件夹放入您的nonebot2插件目录内
 
-<details open>
+</details>
 <summary>使用 nb-cli 安装</summary> (暂不可用)
 在 nonebot2 项目的根目录下打开命令行, 输入以下指令即可安装
 
     nb plugin install nonebot-plugin-mai-arcade
 
-</details>
+<details open>
 
 <details>
 <summary>使用包管理器安装</summary> 
