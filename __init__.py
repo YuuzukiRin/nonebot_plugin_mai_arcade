@@ -24,9 +24,12 @@ __plugin_meta__ = PluginMetadata(
 
 config_dict = Config.parse_obj(get_driver().config.dict())
 
-data_json={}
-data_path=Path(config_dict.mai_arcade_path)
+if config_dict.mai_arcade_path:
+    mai_arcade_path = Path(config_dict.mai_arcade_path)
+else:
+    mai_arcade_path = Path(__file__).parent
 
+data_path = mai_arcade_path / "data.json"
 
 
 def init_data():
