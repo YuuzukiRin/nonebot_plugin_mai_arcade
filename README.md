@@ -42,11 +42,11 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 </details>
 
 <details>
-<summary>使用包管理器安装</summary> (暂不可用)
+<summary>使用包管理器安装</summary> 
 在 nonebot2 项目的插件目录下, 打开命令行, 根据你使用的包管理器, 输入相应的安装命令
 
 <details>
-<summary>pip</summary> (暂不可用)
+<summary>pip</summary> 
 
     pip install nonebot-plugin-mai-arcade
 
