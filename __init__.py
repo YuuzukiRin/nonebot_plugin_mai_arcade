@@ -22,8 +22,6 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
-global_config = get_driver().config
-config = Config.parse_obj(global_config)
 config_dict = Config.parse_obj(get_driver().config.dict())
 
 data_json={}
