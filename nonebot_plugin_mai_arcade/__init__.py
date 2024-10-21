@@ -1,17 +1,19 @@
 import re
 import json
 import datetime
-from nonebot import get_driver, require, on_endswith, on_command, on_regex, on_fullmatch
 from nonebot.plugin import PluginMetadata
+from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
-from nonebot.rule import ArgumentParser
 from pathlib import Path
 import nonebot
+require("nonebot_plugin_localstore")
+import nonebot_plugin_localstore as store
 
+config = nonebot.get_driver().config
 
 __plugin_meta__ = PluginMetadata(
     name="nonebot_plugin_mai_arcade",
@@ -22,21 +24,21 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
 )
 
-config = get_driver().config
+arcade_data_file: Path = store.get_plugin_data_file("arcade_data.json")
 
-if hasattr(config, 'mai_arcade_path'):
-    mai_arcade_path = Path(config.mai_arcade_path)
-else:
-    mai_arcade_path = Path(__file__).parent
+if not arcade_data_file.exists():
+    arcade_data_file.write_text('{}', encoding='utf-8')
 
-data_path = mai_arcade_path / "data.json"
-
-def init_data():
+def load_data():
     global data_json
-    with open(data_path, encoding='utf-8') as f:
+    with open(arcade_data_file, 'r', encoding='utf-8') as f:
         data_json = json.load(f)
 
-init_data()
+def re_write_json():
+    with open(arcade_data_file, 'w', encoding='utf-8') as f:
+        json.dump(data_json, f, ensure_ascii=False, indent=4)
+
+load_data()
 
 go_on=on_command("上机")
 get_in=on_command("排卡")
@@ -60,7 +62,8 @@ sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
 query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)
 scheduler = require('nonebot_plugin_apscheduler').scheduler
 
-superusers = get_driver().config.superusers
+superusers = config.superusers
+
 def is_superuser_or_admin(event: GroupMessageEvent) -> bool:
     user_id = str(event.user_id)
     return event.sender.role in ["admin", "owner"] or user_id in superusers
@@ -154,7 +157,6 @@ async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
             await delete_alias.finish(f"别名 '{alias}' 不存在，请检查输入的别名")
             return
 
-        # Remove alias from the alias list
         alias_list.remove(alias)
         data_json[group_id][name]["alias_list"] = alias_list
 
@@ -339,7 +341,7 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
                 else:
                     await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 当前人数为 {current_num}")
         else:
-            await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在机厅或机厅别名 '{name_part}'")
+            #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在机厅或机厅别名 '{name_part}'")
     else:
         #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在任何机厅")
         return
@@ -750,5 +752,5 @@ async def handle_function(bot:Bot,event:GroupMessageEvent):
 
 async def re_write_json():
     global data_json
-    with open(data_path , 'w' , encoding='utf-8') as f:
+    with open(arcade_data_file , 'w' , encoding='utf-8') as f:
         json.dump(data_json , f , indent=4, ensure_ascii=False)
