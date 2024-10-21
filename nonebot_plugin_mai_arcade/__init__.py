@@ -60,6 +60,7 @@ get_arcade_map = on_command("机厅地图", aliases={"音游地图"})
 sv_arcade=on_regex(r'^(?!.*[+-]\d+)(.*?)\d+$|^(.*?)[+-=]+$', priority=15)
 sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
 query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)
+arcade_help = on_command("机厅help",, aliases={"机厅帮助", "arcade help"} priority=10, block=True)
 scheduler = require('nonebot_plugin_apscheduler').scheduler
 
 superusers = config.superusers
@@ -81,7 +82,39 @@ async def clear_data_daily():
             if 'num' in info:
                 info['num'] = []
                 
-    print(f"arcade缓存清理完成")    
+    print(f"arcade缓存清理完成")  
+
+@arcade_help.handle()
+async def arcade_help(bot: Bot, event: GroupMessageEvent):
+    help_message = (
+        "机厅人数:\n"
+        "[<机厅名>++/--] 机厅的人数+1/-1\n"
+        "[<机厅名>+num/-num] 机厅的人数+num/-num\n"
+        "[<机厅名>=num/<机厅名>num] 机厅的人数重置为num\n"
+        "[<机厅名>几/几人/j] 展示机厅当前的人数信息\n"
+        "[mai/机厅人数] 展示当日已更新的所有机厅的人数列表\n"
+        "群聊管理:\n"
+        "[添加群聊] 将群聊添加到JSON数据中(管理)\n"
+        "[删除群聊] 从JSON数据中删除指定的群聊(管理)\n"
+        "机厅管理:\n"
+        "[添加机厅] 将机厅添加到群聊(管理)\n"
+        "[删除机厅] 从群聊中删除指定的机厅(管理)\n"
+        "[机厅列表] 展示当前机厅列表\n"
+        "[添加机厅别名] 为机厅添加别名(管理)\n"
+        "[删除机厅别名] 移除机厅的别名(管理)\n"
+        "[机厅别名] 展示机厅别名\n"
+        "[添加机厅地图] 添加机厅地图信息(管理)\n"
+        "[删除机厅地图] 移除机厅地图信息(管理)\n"
+        "[机厅地图] 展示机厅音游地图\n"
+        "排卡功能:\n"
+        "[上机] 将当前第一位排队的移至最后\n"
+        "[排卡] 加入排队队列\n"
+        "[退勤] 从排队队列中退出\n"
+        "[排卡现状] 展示当前排队队列的情况\n"
+        "[延后] 将自己延后一位\n"
+        "[闭店] 清空排队队列(管理)\n"
+    )
+    await arcade_help.send(help_message)    
          
 @add_alias.handle()
 async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
