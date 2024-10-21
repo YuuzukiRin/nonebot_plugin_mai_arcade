@@ -342,6 +342,7 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
                     await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 当前人数为 {current_num}")
         else:
             #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在机厅或机厅别名 '{name_part}'")
+            return
     else:
         #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在任何机厅")
         return
