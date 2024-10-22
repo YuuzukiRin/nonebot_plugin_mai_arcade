@@ -34,10 +34,6 @@ def load_data():
     with open(arcade_data_file, 'r', encoding='utf-8') as f:
         data_json = json.load(f)
 
-def re_write_json():
-    with open(arcade_data_file, 'w', encoding='utf-8') as f:
-        json.dump(data_json, f, ensure_ascii=False, indent=4)
-
 load_data()
 
 go_on=on_command("上机")
