@@ -1,43 +1,92 @@
-import os
-import time
-import io
 import re
+import json
 import datetime
-from PIL import Image, ImageDraw, ImageSequence
-import httpx
 from nonebot.plugin import PluginMetadata
-from nonebot import require, on_command, get_driver
+from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import Message, MessageSegment, Bot, Event, GroupMessageEvent
-from nonebot.params import Arg, CommandArg, EventMessage
+from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
+from nonebot.params import CommandArg, EventMessage
+from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
-require("nonebot_plugin_alconna")
-from nonebot_plugin_alconna.uniseg.tools import reply_fetch
-require("nonebot_plugin_apscheduler")
-from nonebot_plugin_apscheduler import scheduler
+from pathlib import Path
+import nonebot
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as store
-from tarina import LRU
-from typing import Optional
-import nonebot
-from nonebot import get_plugin_config
-from .config import Config
-plugin_config = get_plugin_config(Config)
+
+config = nonebot.get_driver().config
 
 __plugin_meta__ = PluginMetadata(
-    name="nonebot_plugin_partner_join",
-    description="NoneBot2 插件 用于生成舞萌DX(maimaiDX)旅行伙伴加入图片(旋转gif) 也可用于类似嵌入相应圆形框架图片生成(如将图片嵌入校徽)",
+    name="nonebot_plugin_mai_arcade",
+    description="舞萌机厅插件",
     usage="",
     type="application",
-    homepage="https://github.com/YuuzukiRin/nonebot_plugin_partner_join",
+    homepage="https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade",
     supported_adapters={"~onebot.v11"},
 )
 
-join_help = on_command("加入帮助", aliases={"join帮助", "加入help", "join help"}, priority=10, block=True)
+arcade_data_file: Path = store.get_plugin_data_file("arcade_data.json")
 
-@join_help.handle()
+if not arcade_data_file.exists():
+    arcade_data_file.write_text('{}', encoding='utf-8')
+
+def load_data():
+    global data_json
+    with open(arcade_data_file, 'r', encoding='utf-8') as f:
+        data_json = json.load(f)
+
+def re_write_json():
+    with open(arcade_data_file, 'w', encoding='utf-8') as f:
+        json.dump(data_json, f, ensure_ascii=False, indent=4)
+
+load_data()
+
+go_on=on_command("上机")
+get_in=on_command("排卡")
+get_run=on_command("退勤")
+show_list=on_command("排卡现状")
+add_group=on_command("添加群聊")
+delete_group=on_command("删除群聊")
+shut_down=on_command("闭店")
+add_arcade=on_command("添加机厅")
+delete_arcade=on_command("删除机厅")
+show_arcade=on_command("机厅列表")
+put_off=on_command("延后")
+add_alias=on_command("添加机厅别名")
+delete_alias=on_command("删除机厅别名", aliases={"移除机厅别名"})
+get_arcade_alias =on_command("机厅别名")
+add_arcade_map=on_command("添加机厅地图")
+delete_arcade_map=on_command("删除机厅地图", aliases={"移除机厅地图"})
+get_arcade_map = on_command("机厅地图", aliases={"音游地图"})
+sv_arcade=on_regex(r'^(?!.*[+-]\d+)(.*?)\d+$|^(.*?)[+-=]+$', priority=15)
+sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
+query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)
+arcade_help = on_command("机厅help", aliases={"机厅帮助", "arcade help"}, priority=10, block=True)
+scheduler = require('nonebot_plugin_apscheduler').scheduler
+
+superusers = config.superusers
+
+def is_superuser_or_admin(event: GroupMessageEvent) -> bool:
+    user_id = str(event.user_id)
+    return event.sender.role in ["admin", "owner"] or user_id in superusers
+
+@scheduler.scheduled_job('cron', hour=0, minute=0)
+async def clear_data_daily():
+    global data_json
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    for group_id, arcades in data_json.items():
+        for arcade_name, info in arcades.items():
+            if 'last_updated_by' in info:
+                info['last_updated_by'] = None
+            if 'last_updated_at' in info:
+                info['last_updated_at'] = None
+            if 'num' in info:
+                info['num'] = []
+                
+    print(f"arcade缓存清理完成")  
+
+@arcade_help.handle()
 async def _(event: GroupMessageEvent, message: Message = EventMessage()):
-    await join_help.send(
+    await arcade_help.send(
         "机厅人数:\n"
         "[<机厅名>++/--] 机厅的人数+1/-1\n"
         "[<机厅名>+num/-num] 机厅的人数+num/-num\n"
@@ -64,375 +113,678 @@ async def _(event: GroupMessageEvent, message: Message = EventMessage()):
         "[排卡现状] 展示当前排队队列的情况\n"
         "[延后] 将自己延后一位\n"
         "[闭店] (管理)清空排队队列\n"
-    )
+    )    
+         
+@add_alias.handle()
+async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
+    global data_json
 
-join_DIR = store.get_data_dir("nonebot_plugin_partner_join")
-join_cache_DIR = store.get_cache_dir("nonebot_plugin_partner_join")
+    input_str = event.raw_message.strip()
+    group_id = str(event.group_id)
 
-@scheduler.scheduled_job('cron', hour=0, minute=0)
-async def clear_join_daily():
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    if not input_str.startswith("添加机厅别名"):
+        await add_alias.finish("格式错误：添加机厅别名 <店名> <别名>")
+        return
 
-    if os.path.exists(join_DIR):
-        for filename in os.listdir(join_DIR):
-            file_path = os.path.join(join_DIR, filename)
-            try:
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                elif os.path.isdir(file_path):
-                    os.rmdir(file_path)
-            except Exception:
-                pass
-                
-class ReplyMergeExtension:
-    def __init__(self, add_left: bool = False, sep: str = " "):
-        self.add_left = add_left
-        self.sep = sep
+    parts = input_str.split(maxsplit=2)
+    if len(parts) != 3:
+        await add_alias.finish("格式错误：添加机厅别名 <店名> <别名>")
+        return
 
-    async def message_provider(self, event, state, bot, use_origin: bool = True):
-        if event.get_type() != "message":
-            return
-        try:
-            msg = event.get_message()
-        except (NotImplementedError, ValueError):
+    _, name, alias = parts
+
+    if group_id in data_json:
+        if not is_superuser_or_admin(event):
+            await add_alias.finish("只有管理员能够添加机厅别名")
             return
 
-        original_message = msg.get_plain_text() if hasattr(msg, 'get_plain_text') else str(msg)
-        
-        if not (reply := await reply_fetch(event, bot)):
-            return original_message
-        if not reply.msg:
-            return original_message
-        
-        reply_msg = reply.msg
-        reply_message = reply_msg if not isinstance(reply_msg, str) else str(reply_msg)
-        
-        if self.add_left:
-            combined_message = f"{reply_message}{self.sep}{original_message}"
-        else:
-            combined_message = f"{original_message}{self.sep}{reply_message}"
-        
-        return combined_message
+        if name not in data_json[group_id]:
+            await add_alias.finish(f"店名 '{name}' 不在群聊中或为机厅别名，请先添加该机厅或使用该机厅本名")
+            return
 
-reply_merge = ReplyMergeExtension(add_left=True, sep="\n")
+        if alias in data_json[group_id][name].get("alias_list", []):
+            await add_alias.finish(f"别名 '{alias}' 已存在，请使用其他别名")
+            return
 
-config = nonebot.get_driver().config
+        # Add alias to the specified arcade
+        alias_list = data_json[group_id][name].get("alias_list", [])
+        alias_list.append(alias)
+        data_json[group_id][name]["alias_list"] = alias_list
 
-PARAMS = getattr(config, 'params', plugin_config.params)
-BACKGROUND_PARAMS = getattr(config, 'background_params', plugin_config.background_params)
-JOIN_COMMANDS = getattr(config, 'join_commands', plugin_config.join_commands)
+        await re_write_json()
 
-fps = getattr(config, 'gif_fps', plugin_config.gif_fps)
-total_duration = getattr(config, 'total_duration', plugin_config.total_duration)
-max_turns = getattr(config, 'max_turns', plugin_config.max_turns)
-rotation_direction = getattr(config, 'rotation_direction', plugin_config.rotation_direction)
-
-for main_command, aliases in JOIN_COMMANDS.items():
-    join = on_command(main_command, aliases=set(aliases), priority=5, block=True)
-
-@join.handle()
-async def handle_first_receive(bot: Bot, event: Event, state: T_State, args: Message = CommandArg()):
-    full_message = await reply_merge.message_provider(event, state, bot)
-    
-    for key in PARAMS.keys():
-        state[key] = False
-    
-    for key, aliases in PARAMS.items():
-        for alias in aliases:
-            if full_message.endswith(alias):
-                state[key] = True
-                break
-            
-    selected_background = "background.gif"
-    for bg_file, aliases in BACKGROUND_PARAMS.items():
-        for alias in aliases:
-            if alias in full_message:
-                selected_background = bg_file
-                break
-    state["selected_background"] = selected_background       
-            
-    message_str = str(full_message)
-    
-    user_id = event.get_user_id()
-    at_pattern = re.compile(r'\[CQ:at,qq=(\d+)\]')
-    at_segments = at_pattern.findall(full_message)
-    at_id = None
-    if at_segments:
-        at_id = at_segments[0]
-    image_pattern = re.compile(r'\[CQ:image,[^\]]*\]')
-    image_segments = image_pattern.findall(message_str)
-    
-    if image_segments:
-        image_info = image_segments[0]
-        state["image"] = image_info
-        await join.send("旅行伙伴加入中...")
-        state["image_processed"] = True
-    elif at_id:
-        state["image"] = "url=https://q4.qlogo.cn/headimg_dl?dst_uin={}&spec=640,".format(at_id)
-        await join.send("旅行伙伴加入中...")
-        state["image_processed"] = True
-        state["image_at"] = True
-    elif state.get("self_join", False):
-        state["image"] = "url=https://q4.qlogo.cn/headimg_dl?dst_uin={}&spec=640,".format(user_id)
-        await join.send("旅行伙伴加入中...")
-        state["image_processed"] = True
-        state["image_user"] = True
+        await add_alias.finish(f"已成功为 '{name}' 添加别名 '{alias}'")
     else:
-        state["awaiting_image"] = True
-        await join.send("请选择要加入的旅行伙伴~(图片)")
+        await add_alias.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
+        
+@delete_alias.handle()
+async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
+    global data_json
 
-@join.got("image")
-async def handle_image(bot: Bot, event: Event, state: T_State, image: Message = Arg("image")):
-    if state.get("image_processed", False):
-        full_message = await reply_merge.message_provider(event, state, bot)
-        message_str = str(full_message)
-        user_id = event.get_user_id()
-        at_pattern = re.compile(r'\[CQ:at,qq=(\d+)\]')
-        at_segments = at_pattern.findall(full_message)
+    input_str = event.raw_message.strip()
+    group_id = str(event.group_id)
+
+    if not input_str.startswith("删除机厅别名"):
+        await delete_alias.finish("格式错误：删除机厅别名 <店名> <别名>")
+        return
+
+    parts = input_str.split(maxsplit=2)
+    if len(parts) != 3:
+        await delete_alias.finish("格式错误：删除机厅别名 <店名> <别名>")
+        return
+
+    _, name, alias = parts
+
+    if group_id in data_json:
+        if not is_superuser_or_admin(event):
+            await delete_alias.finish("只有管理员能够删除机厅别名")
+            return
+
+        if name not in data_json[group_id]:
+            await delete_alias.finish(f"店名 '{name}' 不在群聊中或为机厅别名，请先添加该机厅或使用该机厅本名")
+            return
+
+        alias_list = data_json[group_id][name].get("alias_list", [])
+        if alias not in alias_list:
+            await delete_alias.finish(f"别名 '{alias}' 不存在，请检查输入的别名")
+            return
+
+        alias_list.remove(alias)
+        data_json[group_id][name]["alias_list"] = alias_list
+
+        await re_write_json()
+
+        await delete_alias.finish(f"已成功删除 '{name}' 的别名 '{alias}'")
+    else:
+        await delete_alias.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
+        
+@get_arcade_alias.handle()
+async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent):
+    global data_json
     
-        if at_segments:
-            at_id = at_segments[0]
-        if state.get("image_at", False):
-            image_info = "url=https://q4.qlogo.cn/headimg_dl?dst_uin={}&spec=640,".format(at_id)
-            state["image"] = image_info
-            state["image_at"] = False
-        elif state.get("self_join", False):
-            image_info = "url=https://q4.qlogo.cn/headimg_dl?dst_uin={}&spec=640,".format(user_id)
-            state["image"] = image_info
-            state["self_join"] = False
-        else:       
-            image_pattern = re.compile(r'\[CQ:image,[^\]]*\]')
-            image_segments = image_pattern.findall(message_str)
-            image_info = image_segments[0]
-            state["image"] = image_info
-            state["image_processed"] = False
-    else:    
-        image = image.get("image")
-        image_info = str (image)
-        if image_info:
-            if state.get("awaiting_image", False):
-                state["image"] = image_info
-                await join.send("旅行伙伴加入中...")
-                state["awaiting_image"] = False
-            else:
-                if state.get("image_processed", False):
-                    state["image"] = image_info
-                    state["image_processed"] = False
+    group_id = str(event.group_id)
+    input_str = event.raw_message.strip()
+
+    if not input_str.startswith("机厅别名"):
+        return
+
+    parts = input_str.split(maxsplit=1)
+    if len(parts) != 2:
+        await get_arcade_alias.finish("格式错误：机厅别名 <机厅>")
+        return
+    
+    _, query_name = parts
+ 
+    if group_id in data_json:
+        found = False
+        for name in data_json[group_id]:
+            # Check if it matches an alias in the hall name or alias list
+            if name == query_name or ('alias_list' in data_json[group_id][name] and query_name in data_json[group_id][name]['alias_list']):
+                found = True
+                if 'alias_list' in data_json[group_id][name] and data_json[group_id][name]['alias_list']:
+                    aliases = data_json[group_id][name]['alias_list']
+                    reply = f"机厅 '{name}' 的别名列表如下：\n"
+                    for index, alias in enumerate(aliases, start=1):
+                        reply += f"{index}. {alias}\n"
+                    await get_arcade_alias.finish(reply.strip())
                 else:
-                    await join.finish("加入取消~") 
-        else:
-            await join.finish("加入取消~") 
+                    await get_arcade_alias.finish(f"机厅 '{name}' 尚未添加别名")
+                break
 
-    url_pattern = re.compile(r'url=([^,]+)')
-    match = url_pattern.search(image_info)
-    if match:
-        image_url = match.group(1)
-        image_url = image_url.replace("&amp;", "&")
+        if not found:
+            await get_arcade_alias.finish(f"找不到机厅或机厅别名为 '{query_name}' 的相关信息")
     else:
-        print("未找到图片URL")
-
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(image_url)
-        img_data = response.content
-
-    img = Image.open(io.BytesIO(img_data))
-
-    # 剪切成圆形
-    if state.get("skip_gif", False):
-        # 创建一个虚拟的GIF路径，保存经过圆形剪裁的GIF
-        gif_path = os.path.join(join_cache_DIR, "placeholder.gif")
-        os.makedirs(join_cache_DIR, exist_ok=True)      
-        # 如果GIF是动画的，保存动态GIF
-        if getattr(img, "is_animated", False):
-            frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
-            frames[0].save(gif_path, save_all=True, append_images=frames[1:], loop=0, duration=img.info.get("duration", 100))
-        else:
-            img = circle_crop(img)
-            img.save(gif_path, format='GIF')
-
-        state["skip_gif"] = False
-    else:
-        img = circle_crop(img)
-        gif_path = create_rotating_gif(img)
-
-    background_path = os.path.join(os.path.dirname(__file__), "background", state["selected_background"])
-    final_gif_path = composite_images(background_path, gif_path)
-
-    if os.path.exists(final_gif_path):
-        await join.send(MessageSegment.image(f"file:///{os.path.abspath(final_gif_path)}"))
-    else:
-        print("生成的GIF图像文件不存在。")
-    
-    if os.path.exists(gif_path):
-        os.remove(gif_path)
-
-def circle_crop(img: Image.Image) -> Image.Image:
-    """将图像裁剪成圆形，保留动态效果"""
-    is_animated = getattr(img, "is_animated", False)
-    if is_animated:
-        frames = []
-        for frame in ImageSequence.Iterator(img):
-            cropped_frame = crop_single_frame(frame)
-            frames.append(cropped_frame)
-
-        output = frames[0]
-        output.info = img.info
-
-        gif_path = os.path.join(join_DIR, f"cropped_{int(time.time())}.gif")
-        os.makedirs(join_DIR, exist_ok=True)
-        output.save(gif_path, save_all=True, append_images=frames[1:], loop=0, duration=img.info.get("duration", 100))
+        await get_arcade_alias.finish("本群尚未开通相关功能，请联系群主或管理员添加群聊")
         
-        return Image.open(gif_path)
-    else:
-        return crop_single_frame(img)
+@sv_arcade.handle()
+async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
+    global data_json
 
-def crop_single_frame(frame: Image.Image) -> Image.Image:
-    """对单个帧进行圆形裁剪"""
-    width, height = frame.size
-    radius = min(width, height) // 2
-    mask = Image.new("L", (width, height), 0)
-    draw = ImageDraw.Draw(mask)
-    center_x, center_y = width // 2, height // 2
-    draw.ellipse((center_x - radius, center_y - radius, center_x + radius, center_y + radius), fill=255)
-    output = Image.new("RGBA", (width, height))
-    output.paste(frame, (0, 0), mask)
-    output = output.crop((center_x - radius, center_y - radius, center_x + radius, center_y + radius))
-    return output
+    input_str = event.raw_message.strip()
+    group_id = str(event.group_id)
+    current_time = datetime.datetime.now().strftime("%m-%d %H:%M")
 
-def create_rotating_gif(img: Image.Image) -> str:
-    """创建旋转GIF，保留动态效果"""
-    frames = []
-    num_frames = total_duration * fps
-    max_angle = 360 * max_turns
+    special_pattern = r'^(.*?)=(\d+)$|^(?!.*[+-])(.*?)\d+$'
+    special_match = re.match(special_pattern, input_str)
+    if special_match:
+        groups = special_match.groups()
+        room_name_or_alias = (groups[0] or groups[2]).strip()
+        new_num_str = groups[1] if groups[1] is not None else re.search(r'\d+$', input_str).group()
+        new_num = int(new_num_str)
 
-    is_animated = getattr(img, "is_animated", False)
-    original_frames = []
-
-    if is_animated:
-        original_frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
-
-        original_num_frames = len(original_frames)
-        if original_num_frames == num_frames:
-            scaled_frames = original_frames
-        elif original_num_frames < num_frames:
-            # 如果原始帧数少于目标帧数，重复帧以填充
-            repeat_count = (num_frames // original_num_frames) + 1
-            scaled_frames = (original_frames * repeat_count)[:num_frames]
+        if new_num_str is not None:
+            new_num = int(new_num_str)
         else:
-            # 如果原始帧数多于目标帧数，选择间隔帧进行等比缩放
-            factor = original_num_frames / num_frames
-            scaled_frames = [original_frames[int(i * factor)] for i in range(num_frames)]
-    else:
-        # 如果是静态图像，将静态图像处理为动态
-        original_frames = [img] * num_frames
-        scaled_frames = original_frames
+            new_num = 0
+            
+        if group_id in data_json:
+            found = False
+            if room_name_or_alias in data_json[group_id]:
+                found = True
+            else:
+                for room_name, room_data in data_json[group_id].items():
+                    if "alias_list" in room_data and room_name_or_alias in room_data["alias_list"]:
+                        room_name_or_alias = room_name
+                        found = True
+                        break
+            
+            if found:
+                data_json[group_id][room_name_or_alias]["num"] = [new_num]
+                data_json[group_id][room_name_or_alias].pop("previous_update_by", None)
+                data_json[group_id][room_name_or_alias].pop("previous_update_at", None)
+                data_json[group_id][room_name_or_alias]["last_updated_by"] = event.sender.nickname
+                data_json[group_id][room_name_or_alias]["last_updated_at"] = current_time
 
-    accel_duration = total_duration / 2  # 加速阶段和减速阶段时间相同
-    accel_frames = accel_duration * fps
-    decel_frames = accel_duration * fps
-    total_frames = accel_frames + decel_frames
+                await re_write_json()
+                await sv_arcade.finish(f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+            else:
+                return
 
-    # 计算加速阶段的角加速度
-    accel_angle_change = 2 * max_angle / (accel_frames / fps) ** 2
-
-    for i in range(num_frames):
-        if i < accel_frames:
-            # 加速阶段
-            angle = 0.5 * accel_angle_change * (i / fps) ** 2
         else:
-            # 减速阶段
-            time_in_decel = i - accel_frames
-            # 减速阶段角度计算
-            angle = max_angle - 0.5 * accel_angle_change * ((accel_frames - time_in_decel) / fps) ** 2
+            #await sv_arcade.finish(f"群聊 '{group_id}' 中不存在任何机厅")
+            return
 
-        frame = scaled_frames[i].rotate(rotation_direction * angle, resample=Image.BICUBIC)
-        frames.append(frame)
+        return
 
-    output_dir = join_DIR
-    os.makedirs(output_dir, exist_ok=True)
+    pattern = r'^(.*?)(\+\+|--|[+-]?\d+)$'
+    match = re.match(pattern, input_str)
+    if not match:
+        return
+
+    name = match.group(1).strip()
+    operation = match.group(2)
+
+    if group_id in data_json:
+        found = False
+        if name in data_json[group_id]:
+            found = True
+        else:
+            for room_name, room_data in data_json[group_id].items():
+                if "alias_list" in room_data and name in room_data["alias_list"]:
+                    name = room_name
+                    found = True
+                    break
+        
+        if found:
+            num_list = data_json[group_id][name].setdefault("num", [])
+
+            if operation == "++":
+                num_list.append(1)
+            elif operation == "--":
+                if num_list:
+                    num_list.pop()
+            else:
+                delta = int(operation)
+                num_list.append(delta)
+
+            data_json[group_id][name]["last_updated_by"] = event.sender.nickname
+            data_json[group_id][name]["last_updated_at"] = current_time
+            data_json[group_id][name].pop("previous_update_by", None)
+            data_json[group_id][name].pop("previous_update_at", None)
+
+            await re_write_json()
+            current_num = sum(num_list)
+            await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+        else:
+            return
+    else:
+        return
+        
+@sv_arcade_on_fullmatch.handle()
+async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
+    global data_json
+
+    input_str = event.raw_message.strip()
+    group_id = str(event.group_id)
+
+    pattern = r'^([\u4e00-\u9fa5\w]+)([几j]\d*人?)$'
+    match = re.match(pattern, input_str)
+    if not match:
+        return
+
+    name_part = match.group(1).strip() 
+    num_part = match.group(2).strip() 
+
+    if group_id in data_json:
+        found_arcade = None
+        if name_part in data_json[group_id]:
+            found_arcade = name_part
+        else:
+            for arcade_name, arcade_info in data_json[group_id].items():
+                alias_list = arcade_info.get("alias_list", [])
+                if name_part in alias_list:
+                    found_arcade = arcade_name
+                    break
+        
+        if found_arcade:
+            arcade_info = data_json[group_id][found_arcade]
+            num_list = arcade_info.setdefault("num", [])
+            
+            if not num_list: 
+                await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 今日人数尚未更新")
+            else:
+                current_num = sum(num_list)
+                
+                last_updated_by = arcade_info.get("last_updated_by")
+                last_updated_at = arcade_info.get("last_updated_at")
+
+                if last_updated_by and last_updated_at:
+                    await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 当前人数为 {current_num}\n由 {last_updated_by} 于 {last_updated_at} 更新")
+                else:
+                    await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 当前人数为 {current_num}")
+        else:
+            #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在机厅或机厅别名 '{name_part}'")
+            return
+    else:
+        #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在任何机厅")
+        return
+                
+@query_updated_arcades.handle()
+async def handle_query_updated_arcades(bot: Bot, event: Event, state: T_State):
+    global data_json
+    group_id = str(event.group_id)
+
+    reply_messages = []
+
+    if group_id in data_json:
+        for arcade_name, arcade_info in data_json[group_id].items():
+            num_list = arcade_info.get("num", [])
+            if num_list:
+                last_updated_at = arcade_info.get("last_updated_at")
+                if last_updated_at: 
+                    current_num = sum(num_list)
+                    last_updated_by = arcade_info.get("last_updated_by", "未知用户")
+                    update_info = f" [{arcade_name}] 当前人数为 {current_num} "
+                    update_info += f"\n由 {last_updated_by} 于 {last_updated_at} 更新"
+                    reply_messages.append(update_info)
+
+    if reply_messages:
+        await query_updated_arcades.finish('\n'.join(reply_messages))
+    else:
+        await query_updated_arcades.finish("今天没有任何机厅人数被更新过")
+
+@go_on.handle()
+async def handle_function(bot:Bot,event:GroupMessageEvent):
+    global data_json
+    group_id=str(event.group_id)
+    user_id = str(event.get_user_id())
+    nickname = event.sender.nickname
+    if group_id in data_json:
+        for n in data_json[group_id]:
+            if nickname in data_json[group_id][n]['list']:
+                group_list=data_json[group_id][n]['list']
+                if (len(group_list)>1 and nickname == group_list[0]) :
+                    msg="收到，已将"+str(n)+"机厅中"+group_list[0]+"移至最后一位,下一位上机的是"+group_list[1]+",当前一共有"+str(len(group_list))+"人"
+                    tmp_name=[nickname]
+                    data_json[group_id][n]['list']=data_json[group_id][n]['list'][1:]+tmp_name
+                    await re_write_json()
+                    await go_on.finish(MessageSegment.text(msg))
+                elif (len(group_list)==1 and nickname == group_list[0]):
+                    msg="收到,"+str(n)+"机厅人数1人,您可以爽霸啦"
+                    await go_on.finish(MessageSegment.text(msg))
+                else:
+                    await go_on.finish(f"暂时未到您,请耐心等待")
+        await go_on.finish(f"您尚未排卡")
+    else:
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
+
+@get_in.handle()
+async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
+    global data_json
+
+    name = str(name_)
+    group_id = str(event.group_id)
+    user_id = str(event.get_user_id())
+    nickname = event.sender.nickname
+
+    if group_id in data_json:
+        for n in data_json[group_id]:
+            if nickname in data_json[group_id][n]['list']:
+                await go_on.finish(f"您已加入或正在其他机厅排卡")
+
+        found = False
+        target_room = None
+
+        for room_name, room_data in data_json[group_id].items():
+            if room_name == name:
+                found = True
+                target_room = room_name
+                break
+            elif 'alias_list' in room_data and name in room_data['alias_list']:
+                found = True
+                target_room = room_name
+                break
+
+        if found:
+            tmp_name = [nickname]
+            data_json[group_id][target_room]['list'] = data_json[group_id][target_room]['list'] + tmp_name
+            await re_write_json()
+            msg = f"收到，您已加入排卡。当前您位于第{len(data_json[group_id][target_room]['list'])}位。"
+            await go_on.finish(MessageSegment.text(msg))
+        elif not name:
+            await go_on.finish("请输入机厅名称")
+        else:
+            await go_on.finish("没有该机厅，请使用添加机厅功能添加")
+    else:
+        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
+
+@get_run.handle()
+async def handle_function(bot:Bot,event:GroupMessageEvent):
+    global data_json
+    group_id=str(event.group_id)
+    user_id = str(event.get_user_id())
+    nickname = event.sender.nickname
+    if group_id in data_json:
+        if data_json[group_id] == {}:
+            await get_run.finish('本群没有机厅')
+        for n in data_json[group_id]:
+            if nickname in data_json[group_id][n]['list']:
+                msg=nickname+"从"+str(n)+"退勤成功"
+                data_json[group_id][n]['list'].remove(nickname)
+                await re_write_json()
+                await go_on.finish(MessageSegment.text(msg))
+        await go_on.finish(f"今晚被白丝小萝莉魅魔榨精（您未加入排卡）")
+    else:
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
+
+@show_list.handle()
+async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
+    global data_json
+
+    name = str(name_)
+    group_id = str(event.group_id)
+
+    if group_id in data_json:
+        found = False
+        target_room = None
+
+        for room_name, room_data in data_json[group_id].items():
+            if room_name == name:
+                found = True
+                target_room = room_name
+                break
+            elif 'alias_list' in room_data and name in room_data['alias_list']:
+                found = True
+                target_room = room_name
+                break
+
+        if found:
+            msg = f"{target_room}机厅排卡如下：\n"
+            num = 0
+            for guest in data_json[group_id][target_room]['list']:
+                msg += f"第{num+1}位：{guest}\n"
+                num += 1
+            await go_on.finish(MessageSegment.text(msg))
+        elif not name:
+            await go_on.finish("请输入机厅名称")
+        else:
+            await go_on.finish("没有该机厅，若需要可使用添加机厅功能")
+    else:
+        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
+
+@shut_down.handle()
+async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
+    global data_json
+
+    group_id = str(event.group_id)
+    name = str(name_)
+
+    if group_id in data_json:
+        if not is_superuser_or_admin(event):
+            await go_on.finish("只有管理员能够闭店")
+
+        found = False
+        target_room = None
+
+        for room_name, room_data in data_json[group_id].items():
+            if room_name == name:
+                found = True
+                target_room = room_name
+                break
+            elif 'alias_list' in room_data and name in room_data['alias_list']:
+                found = True
+                target_room = room_name
+                break
+
+        if found:
+            data_json[group_id][target_room]['list'].clear()
+            await re_write_json()
+            await go_on.finish(f"闭店成功，当前排卡零人")
+        elif not name:
+            await go_on.finish("请输入机厅名称")
+        else:
+            await go_on.finish("没有该机厅，若需要可使用添加机厅功能")
+    else:
+        await go_on.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
+
+@add_group.handle()
+async def handle_function(bot:Bot,event:GroupMessageEvent):
     
-    gif_path = os.path.join(output_dir, f"rotating_{int(time.time())}.gif")
-    frames[0].save(gif_path, save_all=True, append_images=frames[1:], duration=int(1000/fps), loop=0)
+    #group_members=await bot.get_group_member_list(group_id=event.group_id)
+    #for m in group_members:
+    #    if m['user_id'] == event.user_id:
+    #        break
+    #su=get_driver().config.superusers
+    #if str(event.get_user_id()) != '12345678' or str(event.get_user_id()) != '2330370458':
+    #   if m['role'] != 'owner' and m['role'] != 'admin' and str(m['user_id']) not in su:
+    #        await add_group.finish("只有管理员对排卡功能进行设置")
+    if not is_superuser_or_admin(event):
+            await go_on.finish(f"只有管理员能够添加群聊")
     
-    return gif_path
+    global data_json
+    group_id=str(event.group_id)
+    if group_id in data_json:
+        await go_on.finish(f"当前群聊已在名单中")
+    else:
+        data_json[group_id]={}
+        await re_write_json()
+        await go_on.finish(f"已添加当前群聊到名单中")
+        
+@delete_group.handle()
+async def handle_delete_group(bot: Bot, event: GroupMessageEvent, state: T_State):
+    if not is_superuser_or_admin(event):
+        await delete_group.finish("只有管理员能够删除群聊")
 
-def find_circle_diameter(mask: Image.Image) -> int:
-    """计算掩码中圆形区域的直径"""
-    width, height = mask.size
-    center_x, center_y = width // 2, height // 2
-    top_y = 0
-    for y in range(center_y, -1, -1):
-        if mask.getpixel((center_x, y)) > 0:
-            top_y = y
-            break
-    bottom_y = height - 1
-    for y in range(center_y, height):
-        if mask.getpixel((center_x, y)) > 0:
-            bottom_y = y
-            break
-    diameter = bottom_y - top_y + 1
-    return diameter
+    global data_json
+    group_id = str(event.group_id)
+    if group_id not in data_json:
+        await delete_group.finish("当前群聊不在名单中，无法删除")
+    else:
+        data_json.pop(group_id)
+        await re_write_json() 
+        await delete_group.finish(f"已从名单中删除当前群聊")
 
-def find_circle_center(mask: Image.Image) -> (int, int):
-    """计算掩码中圆形区域的圆心"""
-    width, height = mask.size
-    center_x, center_y = width // 2, height // 2
-    top_y = 0
-    bottom_y = height - 1
-    for y in range(center_y, -1, -1):
-        if mask.getpixel((center_x, y)) > 0:
-            top_y = y
-            break
-    for y in range(center_y, height):
-        if mask.getpixel((center_x, y)) > 0:
-            bottom_y = y
-            break
-    circle_center_y = top_y + (bottom_y - top_y) // 2
-    return center_x, circle_center_y
+@add_arcade.handle()
+async def handle_function(bot:Bot,event:GroupMessageEvent,name_: Message = CommandArg()):
+    global data_json
+    name=str(name_)
+    group_id = str(event.group_id)
+    if group_id in data_json:
+        if not is_superuser_or_admin(event):
+            await go_on.finish(f"只有管理员能够添加机厅")
+        if not name:
+            await add_arcade.finish(f"请输入机厅名称")
+        elif name in data_json[group_id]:
+            await add_arcade.finish(f"机厅已在群聊中")
+        else:
+            tmp = {"list": []}
+            data_json[group_id][name]=tmp
+            await re_write_json()
+            await add_arcade.finish(f"已添加当前机厅到群聊名单中")
+    else:
+        await add_arcade.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
 
-def resize_gif_to_diameter(img: Image.Image, diameter: int) -> Image.Image:
-    """将GIF图像等比缩放到指定的直径"""
-    img = img.resize((diameter, diameter), Image.LANCZOS)
-    return img
-
-def composite_images(background_path: str, gif_path: str) -> str:
-    """将GIF图像粘贴到背景图中"""
-    background = Image.open(background_path).convert("RGBA")
-    mask = background.split()[-1].convert("L")
-    diameter = find_circle_diameter(mask)
-    circle_center_x, circle_center_y = find_circle_center(mask)
-    gif = Image.open(gif_path)
-
-    gif_frames = []
-    delays = []
-    while True:
-        try:
-            frame = gif.copy()
-            gif_frames.append(frame)
-            delays.append(gif.info['duration'])
-            gif.seek(gif.tell() + 1)
-        except EOFError:
-            break
+@delete_arcade.handle()
+async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = CommandArg()):
+    global data_json
+    name = str(name_)
+    group_id = str(event.group_id)
     
-    gif_frames = [circle_crop(frame) for frame in gif_frames]
-    gif_frames = [resize_gif_to_diameter(frame, diameter) for frame in gif_frames]
+    if group_id in data_json:
+        if not is_superuser_or_admin(event):
+            await delete_arcade.finish(f"只有管理员能够删除机厅")
+        if not name:
+            await delete_arcade.finish(f"请输入机厅名称")
+        elif name not in data_json[group_id]:
+            await delete_arcade.finish(f"机厅不在群聊中或为机厅别名，请先添加该机厅或使用该机厅本名")
+        else:
+            del data_json[group_id][name]
+            await re_write_json()
+            await delete_arcade.finish(f"已从群聊名单中删除机厅：{name}")
+    else:
+        await delete_arcade.finish(f"本群尚未开通排卡功能，请联系群主或管理员添加群聊")
 
-    composite_frames = []
-    for frame in gif_frames:
-        composite_frame = background.copy()
-        composite_frame.paste(frame, (circle_center_x - diameter // 2, circle_center_y - diameter // 2), frame.split()[-1])
-        composite_frames.append(composite_frame)
+@add_arcade_map.handle()
+async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
+    global data_json
+    
+    group_id = str(event.group_id)
+    input_str = event.raw_message.strip()
+    
+    parts = input_str.split(maxsplit=3)
+    if len(parts) != 3:
+        await add_arcade_map.finish("格式错误：添加机厅地图 <机厅名称> <网址>")
+        return
+    
+    _, name, url = parts
+    
+    if group_id in data_json:
+        if not is_superuser_or_admin(event):
+            await add_arcade_map.finish("只有管理员能够添加机厅地图")
+            return
+        
+        if name not in data_json[group_id]:
+            await add_arcade_map.finish(f"机厅 '{name}' 不在群聊中或为机厅别名，请先添加该机厅或使用该机厅本名")
+            return
+        
+        if 'map' not in data_json[group_id][name]:
+            data_json[group_id][name]['map'] = []
+        
+        if url in data_json[group_id][name]['map']:
+            await add_arcade_map.finish(f"网址 '{url}' 已存在于机厅地图中")
+            return
+        
+        data_json[group_id][name]['map'].append(url)
 
-    final_gif_path = os.path.join(join_DIR, f"composite_{int(time.time())}.gif")
+        await re_write_json()
+        
+        await add_arcade_map.finish(f"已成功为 '{name}' 添加机厅地图网址 '{url}'")
+    else:
+        await add_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
+        
+@delete_arcade_map.handle()
+async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
+    global data_json
     
-    composite_frames[0].save(
-        final_gif_path,
-        save_all=True,
-        append_images=composite_frames[1:],
-        duration=delays,
-        loop=0
-    )
+    group_id = str(event.group_id)
+    input_str = event.raw_message.strip()
     
-    return final_gif_path
+    parts = input_str.split(maxsplit=3)
+    if len(parts) != 3:
+        await delete_arcade_map.finish("格式错误：删除机厅地图 <机厅名称> <网址>")
+        return
     
+    _, name, url = parts
+    
+    if group_id in data_json:
+        if not is_superuser_or_admin(event):
+            await delete_arcade_map.finish("只有管理员能够删除机厅地图")
+            return
+        
+        if name not in data_json[group_id]:
+            await delete_arcade_map.finish(f"机厅 '{name}' 不在群聊中或为机厅别名，请先添加该机厅或使用该机厅本名")
+            return
+        
+        if 'map' not in data_json[group_id][name]:
+            await delete_arcade_map.finish(f"机厅 '{name}' 没有添加过任何地图网址")
+            return
+        
+        if url not in data_json[group_id][name]['map']:
+            await delete_arcade_map.finish(f"网址 '{url}' 不在机厅地图中")
+            return
+        
+        data_json[group_id][name]['map'].remove(url)
+
+        await re_write_json()
+        
+        await delete_arcade_map.finish(f"已成功从 '{name}' 删除机厅地图网址 '{url}'")
+    else:
+        await delete_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")   
+
+@get_arcade_map.handle()
+async def handle_get_arcade_map(bot: Bot, event: GroupMessageEvent):
+    global data_json
+    
+    group_id = str(event.group_id)
+    input_str = event.raw_message.strip()
+
+    parts = input_str.split(maxsplit=1)
+    if len(parts) != 2:
+        await get_arcade_map.finish("格式错误：机厅地图 <机厅名称>")
+        return
+    
+    _, query_name = parts
+
+    if group_id in data_json:
+        found = False
+        for name in data_json[group_id]:
+            if name == query_name or ('alias_list' in data_json[group_id][name] and query_name in data_json[group_id][name]['alias_list']):
+                found = True
+                if 'map' in data_json[group_id][name] and data_json[group_id][name]['map']:
+                    maps = data_json[group_id][name]['map']
+                    reply = f"机厅 '{name}' 的音游地图网址如下：\n"
+                    for index, url in enumerate(maps, start=1):
+                        reply += f"{index}. {url}\n"
+                    await get_arcade_map.finish(reply.strip())
+                else:
+                    await get_arcade_map.finish(f"机厅 '{name}' 尚未添加地图网址")
+                break
+                
+        if not found:
+            await get_arcade_map.finish(f"找不到机厅或机厅别名为 '{query_name}' 的相关信息")
+    else:
+        await get_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员")     
+
+@show_arcade.handle()
+async def handle_function(bot:Bot,event:GroupMessageEvent):
+    global data_json
+    group_id=str(event.group_id)
+    if group_id in data_json:
+        msg="机厅列表如下：\n"
+        num=0
+        for n in data_json[group_id]:
+            msg=msg+str(num+1)+"："+n+"\n"
+            num=num+1
+        await go_on.finish(MessageSegment.text(msg.rstrip('\n')))
+    else:
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
+
+@put_off.handle()
+async def handle_function(bot:Bot,event:GroupMessageEvent):
+    global data_json
+    group_id=str(event.group_id)
+    user_id = str(event.get_user_id())
+    nickname = event.sender.nickname
+    if group_id in data_json:
+        num=0
+        for n in data_json[group_id]:
+            if nickname in data_json[group_id][n]['list']:
+                group_list=data_json[group_id][n]['list']
+                if num+1 !=len(group_list):
+                    msg="收到，已将"+str(n)+"机厅中"+group_list[num]+"与"+group_list[num+1]+"调换位置"
+                    tmp_name=[nickname]
+                    data_json[group_id][n]['list'][num],data_json[group_id][n]['list'][num+1]=data_json[group_id][n]['list'][num+1],data_json[group_id][n]['list'][num]
+                    await re_write_json()
+                    await go_on.finish(MessageSegment.text(msg))
+                else:
+                    await go_on.finish(f"您无需延后")
+            num = num + 1
+        await go_on.finish(f"您尚未排卡")
+    else:
+        await go_on.finish(f"本群尚未开通排卡功能,请联系群主或管理员添加群聊")
+
+async def re_write_json():
+    global data_json
+    with open(arcade_data_file , 'w' , encoding='utf-8') as f:
+        json.dump(data_json , f , indent=4, ensure_ascii=False)
+
