@@ -1,7 +1,10 @@
 <div align="center">
+  <!-- 
   <a href="https://v2.nonebot.dev/store"><img src="https://github.com/A-kirami/nonebot-plugin-template/blob/resources/nbp_logo.png" width="180" height="180" alt="NoneBotPluginLogo"></a>
   <br>
-  <p><img src="https://github.com/A-kirami/nonebot-plugin-template/blob/resources/NoneBotPlugin.svg" width="240" alt="NoneBotPluginText"></p>
+  <p><img src="./docs/yuuzuki_join_s.gif" width="240" alt="NoneBotPluginText"></p>
+  -->
+  <a href="https://v2.nonebot.dev/store"><img src="./docs/NoneBotPlugin.svg" width="300" alt="logo"></a>
 </div>
 
 <div align="center">
@@ -107,11 +110,11 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 <details>
 <summary>展开</summary>
 
-![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/effect_picture/add_group_chat.png)
-![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/effect_picture/arcade_number_reported.png)
-![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/effect_picture/arcade_number_inquiry.png)
-![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/effect_picture/add_alias_map.png)
-![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/effect_picture/arcade_queue_card.png)
+![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/add_group_chat.png)
+![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/arcade_number_reported.png)
+![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/arcade_number_inquiry.png)
+![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/edocs/add_alias_map.png)
+![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/arcade_queue_card.png)
 
 </details>
 
