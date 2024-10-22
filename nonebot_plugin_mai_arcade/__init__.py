@@ -60,7 +60,7 @@ get_arcade_map = on_command("机厅地图", aliases={"音游地图"})
 sv_arcade=on_regex(r'^(?!.*[+-]\d+)(.*?)\d+$|^(.*?)[+-=]+$', priority=15)
 sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
 query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)
-arcade_help = on_command("机厅help",, aliases={"机厅帮助", "arcade help"} priority=10, block=True)
+arcade_help = on_command("机厅help", aliases={"机厅帮助", "arcade help"} priority=10, block=True)
 scheduler = require('nonebot_plugin_apscheduler').scheduler
 
 superusers = config.superusers
