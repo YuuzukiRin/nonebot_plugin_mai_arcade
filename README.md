@@ -113,7 +113,7 @@ nonebot-plugin-mai-arcade 是一个基于本地数据的多功能机厅排卡报
 ![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/add_group_chat.png)
 ![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/arcade_number_reported.png)
 ![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/arcade_number_inquiry.png)
-![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/edocs/add_alias_map.png)
+![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/add_alias_map.png)
 ![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/arcade_queue_card.png)
 
 </details>
