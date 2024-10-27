@@ -17,7 +17,7 @@ config = nonebot.get_driver().config
 
 __plugin_meta__ = PluginMetadata(
     name="nonebot_plugin_mai_arcade",
-    description="NoneBot2插件 用于为舞萌玩家提供机厅人数上报、线上排卡功能支持",
+    description="NoneBot2插件 用于为舞萌玩家提供机厅人数上报、线上排卡等功能支持",
     usage="",
     type="application",
     homepage="https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade",
