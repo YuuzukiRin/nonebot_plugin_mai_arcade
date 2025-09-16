@@ -112,22 +112,23 @@ async def _(event: GroupMessageEvent, message: Message = EventMessage()):
     )    
          
 @add_alias.handle()
-async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
+async def handle_add_alias(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
-    input_str = event.raw_message.strip()
     group_id = str(event.group_id)
-
-    if not input_str.startswith("添加机厅别名"):
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await add_alias.finish("格式错误：添加机厅别名 <店名> <别名>")
         return
 
-    parts = input_str.split(maxsplit=2)
-    if len(parts) != 3:
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
         await add_alias.finish("格式错误：添加机厅别名 <店名> <别名>")
         return
 
-    _, name, alias = parts
+    name, alias = parts
 
     if group_id in data_json:
         if not is_superuser_or_admin(event):
@@ -154,22 +155,23 @@ async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
         await add_alias.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
         
 @delete_alias.handle()
-async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
+async def handle_delete_alias(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
-    input_str = event.raw_message.strip()
     group_id = str(event.group_id)
-
-    if not input_str.startswith("删除机厅别名"):
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await delete_alias.finish("格式错误：删除机厅别名 <店名> <别名>")
         return
 
-    parts = input_str.split(maxsplit=2)
-    if len(parts) != 3:
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
         await delete_alias.finish("格式错误：删除机厅别名 <店名> <别名>")
         return
 
-    _, name, alias = parts
+    name, alias = parts
 
     if group_id in data_json:
         if not is_superuser_or_admin(event):
@@ -195,21 +197,18 @@ async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
         await delete_alias.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
         
 @get_arcade_alias.handle()
-async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent):
+async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
     
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
-
-    if not input_str.startswith("机厅别名"):
-        return
-
-    parts = input_str.split(maxsplit=1)
-    if len(parts) != 2:
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await get_arcade_alias.finish("格式错误：机厅别名 <机厅>")
         return
     
-    _, query_name = parts
+    query_name = args_text
  
     if group_id in data_json:
         found = False
@@ -631,18 +630,23 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
         await delete_arcade.finish(f"本群尚未开通排卡功能，请联系群主或管理员添加群聊")
 
 @add_arcade_map.handle()
-async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
+async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
     
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
     
-    parts = input_str.split(maxsplit=3)
-    if len(parts) != 3:
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await add_arcade_map.finish("格式错误：添加机厅地图 <机厅名称> <网址>")
         return
     
-    _, name, url = parts
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
+        await add_arcade_map.finish("格式错误：添加机厅地图 <机厅名称> <网址>")
+        return
+    
+    name, url = parts
     
     if group_id in data_json:
         if not is_superuser_or_admin(event):
@@ -669,18 +673,23 @@ async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
         await add_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")
         
 @delete_arcade_map.handle()
-async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
+async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
     
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
     
-    parts = input_str.split(maxsplit=3)
-    if len(parts) != 3:
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await delete_arcade_map.finish("格式错误：删除机厅地图 <机厅名称> <网址>")
         return
     
-    _, name, url = parts
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
+        await delete_arcade_map.finish("格式错误：删除机厅地图 <机厅名称> <网址>")
+        return
+    
+    name, url = parts
     
     if group_id in data_json:
         if not is_superuser_or_admin(event):
@@ -708,18 +717,18 @@ async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
         await delete_arcade_map.finish("本群尚未开通排卡功能，请联系群主或管理员添加群聊")   
 
 @get_arcade_map.handle()
-async def handle_get_arcade_map(bot: Bot, event: GroupMessageEvent):
+async def handle_get_arcade_map(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
     
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
-
-    parts = input_str.split(maxsplit=1)
-    if len(parts) != 2:
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await get_arcade_map.finish("格式错误：机厅地图 <机厅名称>")
         return
     
-    _, query_name = parts
+    query_name = args_text
 
     if group_id in data_json:
         found = False
