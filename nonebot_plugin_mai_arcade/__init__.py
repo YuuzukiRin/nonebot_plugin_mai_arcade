@@ -2,7 +2,7 @@ import re
 import json
 import datetime
 from nonebot.plugin import PluginMetadata
-from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch
+from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch, logger
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
 from nonebot.params import CommandArg, EventMessage
@@ -78,7 +78,7 @@ async def clear_data_daily():
             if 'num' in info:
                 info['num'] = []
                 
-    print(f"arcade缓存清理完成")  
+    logger.info("arcade缓存清理完成")  
 
 @arcade_help.handle()
 async def _(event: GroupMessageEvent, message: Message = EventMessage()):
