@@ -1,6 +1,6 @@
-import re
-import json
 import datetime
+import http.client
+import json
 from nonebot.plugin import PluginMetadata
 from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch
 from nonebot.adapters import Bot, Event, Message
@@ -12,7 +12,7 @@ from pathlib import Path
 import nonebot
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as store
-
+import re
 config = nonebot.get_driver().config
 
 __plugin_meta__ = PluginMetadata(
@@ -58,7 +58,6 @@ sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
 query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)
 arcade_help = on_command("机厅help", aliases={"机厅帮助", "arcade help"}, priority=10, block=True)
 scheduler = require('nonebot_plugin_apscheduler').scheduler
-
 superusers = config.superusers
 
 def is_superuser_or_admin(event: GroupMessageEvent) -> bool:
@@ -270,9 +269,48 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
                 data_json[group_id][room_name_or_alias].pop("previous_update_at", None)
                 data_json[group_id][room_name_or_alias]["last_updated_by"] = event.sender.nickname
                 data_json[group_id][room_name_or_alias]["last_updated_at"] = current_time
-
                 await re_write_json()
-                await sv_arcade.finish(f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+                try:
+                    conn = http.client.HTTPSConnection("nearcade.phizone.cn")
+                    shop_id = re.search(r'/shop/(\d+)', data_json[group_id][room_name_or_alias]['map'][0]).group(1)
+                    conn.request("GET", f"/api/shops/bemanicn/{shop_id}")
+                    res = conn.getresponse()
+                    if res.status != 200:
+                        await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {res.status}")
+
+                    raw_data = res.read().decode("utf-8")
+                    data = json.loads(raw_data)
+                    game_id = data["shop"]["games"][0]["gameId"]
+
+                    payload = json.dumps({
+                        "games": [
+                            {
+                                "id": game_id,
+                                "currentAttendances": new_num
+                            }
+                        ]
+                    })
+                    headers = {
+                        'Authorization': 'token',
+                        'Content-Type': 'application/json'
+                    }
+
+                    conn = http.client.HTTPSConnection("nearcade.phizone.cn")
+                    conn.request("POST", f"/api/shops/bemanicn/{shop_id}/attendance", payload, headers)
+                    res = conn.getresponse()
+                    raw_data = res.read().decode("utf-8")
+
+                    if res.status == 200:
+                        await sv_arcade.send("感谢使用，机厅人数已经上传Nearcade")
+                        await sv_arcade.finish(
+                            f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新"
+                        )
+                    else:
+                        await sv_arcade.send(f"上传失败: {res.status}\n返回信息: {raw_data}")
+                        await sv_arcade.finish(f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+                except Exception as e:
+                    await sv_arcade.finish(
+                        f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
             else:
                 return
 
@@ -661,7 +699,6 @@ async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
             return
         
         data_json[group_id][name]['map'].append(url)
-
         await re_write_json()
         
         await add_arcade_map.finish(f"已成功为 '{name}' 添加机厅地图网址 '{url}'")
