@@ -55,7 +55,7 @@ delete_arcade_map=on_command("删除机厅地图", aliases={"移除机厅地图"
 get_arcade_map = on_command("机厅地图", aliases={"音游地图"})
 sv_arcade=on_regex(r'^(?!.*[+-]\d+)(.*?)\d+$|^(.*?)[+-=]+$', priority=15)
 sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
-query_updated_arcades=on_fullmatch(("mai", "机厅人数"), ignorecase=False)
+query_updated_arcades=on_fullmatch(("mai", "机厅人数","jtj"), ignorecase=False)
 arcade_help = on_command("机厅help", aliases={"机厅帮助", "arcade help"}, priority=10, block=True)
 scheduler = require('nonebot_plugin_apscheduler').scheduler
 superusers = config.superusers
@@ -358,7 +358,44 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
 
             await re_write_json()
             current_num = sum(num_list)
-            await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+            try:
+                conn = http.client.HTTPSConnection("nearcade.phizone.cn")
+                shop_id = re.search(r'/shop/(\d+)', data_json[group_id][name]['map'][0]).group(1)
+                conn.request("GET", f"/api/shops/bemanicn/{shop_id}")
+                res = conn.getresponse()
+                if res.status != 200:
+                    await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {res.status}")
+
+                raw_data = res.read().decode("utf-8")
+                data = json.loads(raw_data)
+                game_id = data["shop"]["games"][0]["gameId"]
+
+                payload = json.dumps({
+                    "games": [
+                        {
+                            "id": game_id,
+                            "currentAttendances": current_num
+                        }
+                    ]
+                })
+                headers = {
+                    'Authorization': 'token',
+                    'Content-Type': 'application/json'
+                }
+
+                conn = http.client.HTTPSConnection("nearcade.phizone.cn")
+                conn.request("POST", f"/api/shops/bemanicn/{shop_id}/attendance", payload, headers)
+                res = conn.getresponse()
+                raw_data = res.read().decode("utf-8")
+
+                if res.status == 200:
+                    await sv_arcade.send("感谢使用，机厅人数已经上传Nearcade")
+                    await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+                else:
+                    await sv_arcade.send(f"上传失败: {res.status}\n返回信息: {raw_data}")
+                    await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+            except Exception as e:
+                await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
         else:
             return
     else:
