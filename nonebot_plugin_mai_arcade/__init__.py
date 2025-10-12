@@ -2,19 +2,21 @@ import datetime
 import http.client
 import json
 from nonebot.plugin import PluginMetadata
-from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch
+from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch,on_message
 from nonebot.adapters import Bot, Event, Message
-from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent
+from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent,MessageEvent
 from nonebot.params import CommandArg, EventMessage
 from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
 from pathlib import Path
 import nonebot
+import math
+import urllib.parse
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as store
 import re
 config = nonebot.get_driver().config
-
+block_group=["765883672","718154939"]
 __plugin_meta__ = PluginMetadata(
     name="nonebot_plugin_mai_arcade",
     description="NoneBot2插件 用于为舞萌玩家提供机厅人数上报、线上排卡等功能支持",
@@ -53,17 +55,31 @@ get_arcade_alias =on_command("机厅别名")
 add_arcade_map=on_command("添加机厅地图")
 delete_arcade_map=on_command("删除机厅地图", aliases={"移除机厅地图"})
 get_arcade_map = on_command("机厅地图", aliases={"音游地图"})
-sv_arcade=on_regex(r'^(?!.*[+-]\d+)(.*?)\d+$|^(.*?)[+-=]+$', priority=15)
+sv_arcade = on_regex(r"^([\u4e00-\u9fa5\w]+)\s*(==\d+|={1}\d+|\+\+\d+|--\d+|\+\+|--|[+-]?\d+)?$", priority=100)
 sv_arcade_on_fullmatch=on_endswith(("几", "几人", "j"), ignorecase=False)
-query_updated_arcades=on_fullmatch(("mai", "机厅人数","jtj"), ignorecase=False)
-arcade_help = on_command("机厅help", aliases={"机厅帮助", "arcade help"}, priority=10, block=True)
+query_updated_arcades=on_fullmatch(("mai", "机厅人数","jtj","机厅几人"), ignorecase=False)
+arcade_help = on_command("机厅help", aliases={"机厅帮助", "arcade help"}, priority=100, block=True)
 scheduler = require('nonebot_plugin_apscheduler').scheduler
 superusers = config.superusers
+location_listener = on_message(priority=100, block=False)
+blockgroup = on_command("静默监听模式", aliases={"静默模式","监听模式"} ,permission=SUPERUSER)
+blockdetelgroup = on_command("关闭静默监听模式", aliases={"关闭静默模式","关闭监听模式"} ,permission=SUPERUSER)
 
 def is_superuser_or_admin(event: GroupMessageEvent) -> bool:
     user_id = str(event.user_id)
     return event.sender.role in ["admin", "owner"] or user_id in superusers
 
+@blockgroup.handle()
+async def blockmodel(bot: Bot, event: GroupMessageEvent):
+    group_id = str(event.group_id)
+    block_group.append(group_id)
+    await blockgroup.finish(f"以将{group_id}加入BlockGroup List，进行静默监听模式")
+
+@blockdetelgroup.handle()
+async def blockmodel(bot: Bot, event: GroupMessageEvent):
+    group_id = str(event.group_id)
+    block_group.remove(group_id)
+    await blockgroup.finish(f"以将{group_id}从BlockGroup List删除，改为正常模式")
 @scheduler.scheduled_job('cron', hour=0, minute=0)
 async def clear_data_daily():
     global data_json
@@ -237,169 +253,158 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
 
     input_str = event.raw_message.strip()
     group_id = str(event.group_id)
-    current_time = datetime.datetime.now().strftime("%m-%d %H:%M")
+    current_time = datetime.datetime.now().strftime("%H:%M")
 
-    special_pattern = r'^(.*?)=(\d+)$|^(?!.*[+-])(.*?)\d+$'
-    special_match = re.match(special_pattern, input_str)
-    if special_match:
-        groups = special_match.groups()
-        room_name_or_alias = (groups[0] or groups[2]).strip()
-        new_num_str = groups[1] if groups[1] is not None else re.search(r'\d+$', input_str).group()
-        new_num = int(new_num_str)
-
-        if new_num_str is not None:
-            new_num = int(new_num_str)
-        else:
-            new_num = 0
-            
-        if group_id in data_json:
-            found = False
-            if room_name_or_alias in data_json[group_id]:
-                found = True
-            else:
-                for room_name, room_data in data_json[group_id].items():
-                    if "alias_list" in room_data and room_name_or_alias in room_data["alias_list"]:
-                        room_name_or_alias = room_name
-                        found = True
-                        break
-            
-            if found:
-                data_json[group_id][room_name_or_alias]["num"] = [new_num]
-                data_json[group_id][room_name_or_alias].pop("previous_update_by", None)
-                data_json[group_id][room_name_or_alias].pop("previous_update_at", None)
-                data_json[group_id][room_name_or_alias]["last_updated_by"] = event.sender.nickname
-                data_json[group_id][room_name_or_alias]["last_updated_at"] = current_time
-                await re_write_json()
-                try:
-                    conn = http.client.HTTPSConnection("nearcade.phizone.cn")
-                    shop_id = re.search(r'/shop/(\d+)', data_json[group_id][room_name_or_alias]['map'][0]).group(1)
-                    conn.request("GET", f"/api/shops/bemanicn/{shop_id}")
-                    res = conn.getresponse()
-                    if res.status != 200:
-                        await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {res.status}")
-
-                    raw_data = res.read().decode("utf-8")
-                    data = json.loads(raw_data)
-                    game_id = data["shop"]["games"][0]["gameId"]
-
-                    payload = json.dumps({
-                        "games": [
-                            {
-                                "id": game_id,
-                                "currentAttendances": new_num
-                            }
-                        ]
-                    })
-                    headers = {
-                        'Authorization': 'token',
-                        'Content-Type': 'application/json'
-                    }
-
-                    conn = http.client.HTTPSConnection("nearcade.phizone.cn")
-                    conn.request("POST", f"/api/shops/bemanicn/{shop_id}/attendance", payload, headers)
-                    res = conn.getresponse()
-                    raw_data = res.read().decode("utf-8")
-
-                    if res.status == 200:
-                        await sv_arcade.send("感谢使用，机厅人数已经上传Nearcade")
-                        await sv_arcade.finish(
-                            f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新"
-                        )
-                    else:
-                        await sv_arcade.send(f"上传失败: {res.status}\n返回信息: {raw_data}")
-                        await sv_arcade.finish(f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
-                except Exception as e:
-                    await sv_arcade.finish(
-                        f"[{room_name_or_alias}] 当前人数重置为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
-            else:
-                return
-
-        else:
-            #await sv_arcade.finish(f"群聊 '{group_id}' 中不存在任何机厅")
-            return
-
-        return
-
-    pattern = r'^(.*?)(\+\+|--|[+-]?\d+)$'
-    match = re.match(pattern, input_str)
+    pattern = re.compile(r'^([\u4e00-\u9fa5\w]+?)([+\-=]{0,2})(\d*)$')
+    match = pattern.match(input_str)
     if not match:
         return
 
-    name = match.group(1).strip()
-    operation = match.group(2)
+    name, op, num_str = match.groups()
+    num = int(num_str) if num_str else None
 
-    if group_id in data_json:
-        found = False
-        if name in data_json[group_id]:
-            found = True
-        else:
-            for room_name, room_data in data_json[group_id].items():
-                if "alias_list" in room_data and name in room_data["alias_list"]:
-                    name = room_name
-                    found = True
-                    break
-        
-        if found:
-            num_list = data_json[group_id][name].setdefault("num", [])
+    if (not op) and (num is None):
+        return
 
-            if operation == "++":
-                num_list.append(1)
-            elif operation == "--":
-                if num_list:
-                    num_list.pop()
-            else:
-                delta = int(operation)
-                num_list.append(delta)
+    if group_id not in data_json:
+        return
 
-            data_json[group_id][name]["last_updated_by"] = event.sender.nickname
-            data_json[group_id][name]["last_updated_at"] = current_time
-            data_json[group_id][name].pop("previous_update_by", None)
-            data_json[group_id][name].pop("previous_update_at", None)
+    found = False
+    if name in data_json[group_id]:
+        found = True
+    else:
+        for arcade_name, arcade_info in data_json[group_id].items():
+            if "alias_list" in arcade_info and name in arcade_info["alias_list"]:
+                name = arcade_name
+                found = True
+                break
 
-            await re_write_json()
-            current_num = sum(num_list)
-            try:
-                conn = http.client.HTTPSConnection("nearcade.phizone.cn")
-                shop_id = re.search(r'/shop/(\d+)', data_json[group_id][name]['map'][0]).group(1)
-                conn.request("GET", f"/api/shops/bemanicn/{shop_id}")
-                res = conn.getresponse()
-                if res.status != 200:
-                    await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {res.status}")
+    if not found:
+        return
 
-                raw_data = res.read().decode("utf-8")
-                data = json.loads(raw_data)
-                game_id = data["shop"]["games"][0]["gameId"]
+    arcade_data = data_json[group_id][name]
+    num_list = arcade_data.setdefault("num", [])
+    current_num = sum(num_list) if num_list else 0
 
-                payload = json.dumps({
-                    "games": [
-                        {
-                            "id": game_id,
-                            "currentAttendances": current_num
-                        }
-                    ]
-                })
-                headers = {
-                    'Authorization': 'token',
-                    'Content-Type': 'application/json'
-                }
-
-                conn = http.client.HTTPSConnection("nearcade.phizone.cn")
-                conn.request("POST", f"/api/shops/bemanicn/{shop_id}/attendance", payload, headers)
-                res = conn.getresponse()
-                raw_data = res.read().decode("utf-8")
-
-                if res.status == 200:
-                    await sv_arcade.send("感谢使用，机厅人数已经上传Nearcade")
-                    await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
-                else:
-                    await sv_arcade.send(f"上传失败: {res.status}\n返回信息: {raw_data}")
-                    await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
-            except Exception as e:
-                await sv_arcade.finish(f"[{name}] 当前人数更新为 {current_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
-        else:
-            return
+    if op in ("++", "+"):
+        delta = num if num else 1
+        if abs(delta) > 50:
+            await sv_arcade.finish("检测到非法数值，拒绝更新")
+        new_num = current_num + delta
+        if new_num<0 or new_num>100:
+            await sv_arcade.finish("检测到非法数值，拒绝更新")
+    elif op in ("--", "-"):
+        delta = -(num if num else 1)
+        if abs(delta) > 50:
+            await sv_arcade.finish("检测到非法数值，拒绝更新")
+        new_num = current_num + delta
+        if new_num<0 or new_num>100:
+            await sv_arcade.finish("检测到非法数值，拒绝更新")
+    elif op in ("==", "=") or (op == "" and num is not None):
+        new_num = num
+        if new_num < 0 or new_num > 100:
+            await sv_arcade.finish("检测到非法数值，拒绝更新")
+        delta = 0
+        num_list.clear()
+        num_list.append(new_num)
     else:
         return
+
+    if op in ("++", "+", "--", "-"):
+        num_list.append(delta)
+    arcade_data["last_updated_by"] = event.sender.nickname
+    arcade_data["last_updated_at"] = current_time
+    arcade_data.pop("previous_update_by", None)
+    arcade_data.pop("previous_update_at", None)
+    await re_write_json()
+
+    try:
+        shop_id = re.search(r'/shop/(\d+)', arcade_data['map'][0]).group(1)
+    except KeyError:
+        await sv_arcade.finish(f"[{name}] 当前人数更新为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+
+    conn = http.client.HTTPSConnection("nearcade.phizone.cn")
+    conn.request("GET", f"/api/shops/bemanicn/{shop_id}")
+    res = conn.getresponse()
+    if res.status != 200:
+        await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {res.status}")
+
+    raw_data = res.read().decode("utf-8")
+    data = json.loads(raw_data)
+    game_id = data["shop"]["games"][0]["gameId"]
+    coutnum = 0
+    for game in data["shop"]["games"]:
+        if game["name"] == "maimai DX":
+            coutnum = game.get("quantity", 1)
+    arcade_data["coutnum"] = coutnum
+    await re_write_json()
+
+    per_round_minutes = 16
+    players_per_round = max(int(coutnum), 1) * 2          # 每轮最多游玩人数（至少按1台计算）
+    queue_num = max(int(new_num) - players_per_round, 0)  # 等待人数（不包含正在玩的这一轮）
+
+    if queue_num > 0:
+        expected_rounds = queue_num / players_per_round        # 平均轮数（允许小数）
+        min_rounds = queue_num // players_per_round            # 乐观整数轮（可能为0）
+        max_rounds = math.ceil(queue_num / players_per_round)  # 保守整数轮
+
+        wait_time_avg = round(expected_rounds * per_round_minutes)
+        wait_time_min = int(min_rounds * per_round_minutes)
+        wait_time_max = int(max_rounds * per_round_minutes)
+
+        if wait_time_avg <= 20:
+            smart_tip = "✅ 舞萌启动！"
+        elif 20 < wait_time_avg <= 40:
+            smart_tip = "🕰️ 小排队还能忍"
+        elif 40 < wait_time_avg <= 90:
+            smart_tip = "💀 DBD，纯折磨，建议换店"
+        else:  # > 90
+            smart_tip = "🪦 建议回家（或者明天再来）"
+
+        msg = (
+            f"📍 {name}  人数已更新为 {new_num}\n"
+            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
+            f"⌛ 预计等待：约 {wait_time_avg} 分钟\n"
+            f"   ↳ 范围：{wait_time_min}~{wait_time_max} 分钟（{min_rounds}~{max_rounds} 轮）\n\n"
+            f"💡 {smart_tip}"
+        )
+    else:
+        # 无需等待
+        msg = (
+            f"📍 {name}  人数已更新为 {new_num}\n"
+            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
+            f"✅ 无需等待，快去出勤吧！"
+        )
+
+    payload = json.dumps({
+        "games": [
+            {"id": game_id, "currentAttendances": new_num}
+        ]
+    })
+    headers = {
+        'Authorization': 'Bearer nk_eimMHQaX7F6g0LlLg6ihhweRQTyLxUTVKHuIdijadC',
+        'Content-Type': 'application/json'
+    }
+
+    try:
+        conn = http.client.HTTPSConnection("nearcade.phizone.cn", timeout=10)
+        conn.request("POST", f"/api/shops/bemanicn/{shop_id}/attendance", payload, headers)
+        res = conn.getresponse()
+        raw_data = res.read().decode("utf-8")
+    except Exception as e:
+        raw_data = str(e)
+        res = None
+
+    if res is not None and res.status == 200:
+        if group_id in block_group:
+            return
+        else:
+            await sv_arcade.finish(f"感谢使用，机厅人数已上传 Nearcade\n{msg}")
+    else:
+        if group_id in block_group:
+            return
+        status_text = res.status if res is not None else "请求失败"
+        await sv_arcade.finish(f"上传失败: {status_text}\n返回信息: {raw_data}\n\n{msg}")
         
 @sv_arcade_on_fullmatch.handle()
 async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
@@ -412,7 +417,6 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
     match = re.match(pattern, input_str)
     if not match:
         return
-
     name_part = match.group(1).strip() 
     num_part = match.group(2).strip() 
 
@@ -430,19 +434,131 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
         if found_arcade:
             arcade_info = data_json[group_id][found_arcade]
             num_list = arcade_info.setdefault("num", [])
-            
-            if not num_list: 
-                await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 今日人数尚未更新")
-            else:
-                current_num = sum(num_list)
-                
-                last_updated_by = arcade_info.get("last_updated_by")
-                last_updated_at = arcade_info.get("last_updated_at")
-
-                if last_updated_by and last_updated_at:
-                    await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 当前人数为 {current_num}\n由 {last_updated_by} 于 {last_updated_at} 更新")
+            try:
+                shop_id = re.search(r'/shop/(\d+)', arcade_info['map'][0]).group(1)
+                conn = http.client.HTTPSConnection("nearcade.phizone.cn")
+                conn.request("GET", f"/api/shops/bemanicn/{shop_id}/attendance?reported=false")
+                res = conn.getresponse()
+                if res.status != 200:
+                    await sv_arcade.send(f"获取 shop {shop_id} 云端出勤人数失败: {res.status}")
+                raw_data = res.read().decode("utf-8")
+                data = json.loads(raw_data)
+                regnum = data["total"]
+                if regnum == 0:
+                    if group_id in block_group:
+                        return
+                    num_list = num_list
+                    current_num = sum(num_list)
+                    last_updated_by = arcade_info.get("last_updated_by")
+                    last_updated_at = arcade_info.get("last_updated_at")
                 else:
-                    await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 当前人数为 {current_num}")
+                    if group_id in block_group:
+                        if data_json[group_id][found_arcade]["alias_list"]:
+                            jtname=data_json[group_id][found_arcade]["alias_list"][0]
+                        else:
+                            jtname=found_arcade
+                        await sv_arcade_on_fullmatch.finish(f"{jtname}+{regnum}")
+                    else:
+                        num_list.append(regnum)
+                        current_num = sum(num_list)
+                        last_updated_by = data["registered"]["userId"]
+                        last_updated_at = data["registered"]["attendedAt"]
+                if not num_list:
+                    await sv_arcade_on_fullmatch.finish(
+                        f"[{found_arcade}] 今日人数尚未更新\n你可以爽霸机了\n快去出勤吧！")
+                else:
+                    coutnum = arcade_info.get("quantity", 1)
+                    per_round_minutes = 16
+                    players_per_round = max(int(coutnum), 1) * 2  # 每轮最多游玩人数（至少按1台计算）
+                    queue_num = max(int(current_num) - players_per_round, 0)  # 等待人数（不包含正在玩的这一轮）
+
+                    if queue_num > 0:
+                        expected_rounds = queue_num / players_per_round
+                        min_rounds = queue_num // players_per_round
+                        max_rounds = math.ceil(queue_num / players_per_round)
+
+                        wait_time_avg = round(expected_rounds * per_round_minutes)
+                        wait_time_min = int(min_rounds * per_round_minutes)
+                        wait_time_max = int(max_rounds * per_round_minutes)
+
+                        if wait_time_avg <= 20:
+                            smart_tip = "✅ 舞萌启动！"
+                        elif 20 < wait_time_avg <= 40:
+                            smart_tip = "🕰️ 小排队还能忍"
+                        elif 40 < wait_time_avg <= 90:
+                            smart_tip = "💀 DBD，纯折磨，建议换店"
+                        else:  # > 90
+                            smart_tip = "🪦 建议回家（或者明天再来）"
+
+                        msg = (
+                            f"📍 {found_arcade}  人数为 {current_num}\n"
+                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
+                            f"⌛ 预计等待：约 {wait_time_avg} 分钟\n"
+                            f"   ↳ 范围：{wait_time_min}~{wait_time_max} 分钟（{min_rounds}~{max_rounds} 轮）\n\n"
+                            f"💡 {smart_tip}"
+                        )
+                    else:
+                        # 无需等待
+                        msg = (
+                            f"📍 {found_arcade}  人数为 {current_num}\n"
+                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
+                            f"✅ 无需等待，快去出勤吧！"
+                        )
+
+                    if last_updated_at and last_updated_by:
+                        msg += f"\n（{last_updated_by} · {last_updated_at}）"
+
+                    await sv_arcade_on_fullmatch.finish(msg)
+            except KeyError:
+                if not num_list:
+                    await sv_arcade_on_fullmatch.finish(f"[{found_arcade}] 今日人数尚未更新\n你可以爽霸机了\n快去出勤吧！")
+                else:
+                    current_num = sum(num_list)
+                    last_updated_by = arcade_info.get("last_updated_by")
+                    last_updated_at = arcade_info.get("last_updated_at")
+                    await re_write_json()
+                    coutnum = arcade_info.get("quantity", 1)
+                    per_round_minutes = 16
+                    players_per_round = max(int(coutnum), 1) * 2  # 每轮最多游玩人数（至少按1台计算）
+                    queue_num = max(int(current_num) - players_per_round, 0)  # 等待人数（不包含正在玩的这一轮）
+
+                    if queue_num > 0:
+                        expected_rounds = queue_num / players_per_round
+                        min_rounds = queue_num // players_per_round
+                        max_rounds = math.ceil(queue_num / players_per_round)
+
+                        wait_time_avg = round(expected_rounds * per_round_minutes)
+                        wait_time_min = int(min_rounds * per_round_minutes)
+                        wait_time_max = int(max_rounds * per_round_minutes)
+
+                        if wait_time_avg <= 20:
+                            smart_tip = "✅ 舞萌启动！"
+                        elif 20 < wait_time_avg <= 40:
+                            smart_tip = "🕰️ 小排队还能忍"
+                        elif 40 < wait_time_avg <= 90:
+                            smart_tip = "💀 DBD，纯折磨，建议换店"
+                        else:  # > 90
+                            smart_tip = "🪦 建议回家（或者明天再来）"
+
+                        msg = (
+                            f"📍 {found_arcade}  人数为 {current_num}\n"
+                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
+                            f"⌛ 预计等待：约 {wait_time_avg} 分钟\n"
+                            f"   ↳ 范围：{wait_time_min}~{wait_time_max} 分钟（{min_rounds}~{max_rounds} 轮）\n\n"
+                            f"💡 {smart_tip}"
+                        )
+                    else:
+                        # 无需等待
+                        msg = (
+                            f"📍 {found_arcade}  人数为 {current_num}\n"
+                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
+                            f"✅ 无需等待，快去出勤吧！"
+                        )
+
+                    if last_updated_at and last_updated_by:
+                        msg += f"\n（{last_updated_by} · {last_updated_at}）"
+
+                    await sv_arcade_on_fullmatch.finish(msg)
         else:
             #await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在机厅或机厅别名 '{name_part}'")
             return
@@ -456,23 +572,27 @@ async def handle_query_updated_arcades(bot: Bot, event: Event, state: T_State):
     group_id = str(event.group_id)
 
     reply_messages = []
+    if group_id in block_group:
+        return
+    group_data = data_json.get(group_id, {})
+    for arcade_name, arcade_info in group_data.items():
+        num_list = arcade_info.get("num", [])
+        if not num_list:
+            continue
 
-    if group_id in data_json:
-        for arcade_name, arcade_info in data_json[group_id].items():
-            num_list = arcade_info.get("num", [])
-            if num_list:
-                last_updated_at = arcade_info.get("last_updated_at")
-                if last_updated_at: 
-                    current_num = sum(num_list)
-                    last_updated_by = arcade_info.get("last_updated_by", "未知用户")
-                    update_info = f" [{arcade_name}] 当前人数为 {current_num} "
-                    update_info += f"\n由 {last_updated_by} 于 {last_updated_at} 更新"
-                    reply_messages.append(update_info)
+        current_num = sum(num_list)
+        last_updated_at = arcade_info.get("last_updated_at", "未知时间")
+        last_updated_by = arcade_info.get("last_updated_by", "未知用户")
+
+        line = f"[{arcade_name}] {current_num}人 （{last_updated_by} · {last_updated_at}）"
+        reply_messages.append(line)
 
     if reply_messages:
-        await query_updated_arcades.finish('\n'.join(reply_messages))
+        header = "📋 今日机厅人数更新情况\n\n"
+        await query_updated_arcades.finish(header + "\n".join(reply_messages))
     else:
-        await query_updated_arcades.finish("今天没有任何机厅人数被更新过")
+        await query_updated_arcades.finish("📋 今日机厅人数更新情况\n\n暂无更新记录\n您可以爽霸机了")
+
 
 @go_on.handle()
 async def handle_function(bot:Bot,event:GroupMessageEvent):
@@ -720,10 +840,6 @@ async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
     _, name, url = parts
     
     if group_id in data_json:
-        if not is_superuser_or_admin(event):
-            await add_arcade_map.finish("只有管理员能够添加机厅地图")
-            return
-        
         if name not in data_json[group_id]:
             await add_arcade_map.finish(f"机厅 '{name}' 不在群聊中或为机厅别名，请先添加该机厅或使用该机厅本名")
             return
@@ -858,3 +974,59 @@ async def re_write_json():
     with open(arcade_data_file , 'w' , encoding='utf-8') as f:
         json.dump(data_json , f , indent=4, ensure_ascii=False)
 
+async def call_discover(lat: float, lon: float, radius: int = 10, name: str = None):
+    BASE_HOST = "nearcade.phizone.cn"
+    conn = http.client.HTTPSConnection(BASE_HOST)
+    params = {
+        "latitude": str(lat),
+        "longitude": str(lon),
+        "radius": str(radius),
+    }
+    if name:
+        params["name"] = name
+    query = urllib.parse.urlencode(params, safe="")
+    path = f"/api/discover?{query}"
+    conn.request("GET", path)
+    resp = conn.getresponse()
+    data = resp.read().decode("utf-8")
+    conn.close()
+    return json.loads(data), f"https://{BASE_HOST}/discover?{query}"  # 返回 JSON + 网页 URL
+
+
+    return json.loads(data)
+@location_listener.handle()
+async def _(event: MessageEvent):
+    for seg in event.message:
+        if seg.type == "json":
+            try:
+                # 解析 CQ:json 的 data
+                cq_data = json.loads(seg.data["data"])
+                location = cq_data.get("meta", {}).get("Location.Search", {})
+
+                lat = float(location.get("lat", 0))
+                lon = float(location.get("lng", 0))
+                title = location.get("name", "未知位置")
+
+                if not lat or not lon:
+                    raise Exception("<UNK>")
+
+                result, web_url = await call_discover(lat, lon, radius=10, name=title)
+
+                shops = result.get("shops", [])
+                if not shops:
+                    await location_listener.finish(f"附近没有找到机厅\n👉 详情可查看：{web_url}")
+                    return
+
+                reply_lines = []
+                for shop in shops[:3]:  # 只展示 3 个，避免刷屏
+                    name = shop.get("name", "未知机厅")
+                    dist_val = shop.get("distance", 0)
+                    dist_str = f"{dist_val*1000:.0f}米" if isinstance(dist_val, (int, float)) else "未知距离"
+                    shop_addr = shop.get("address", {}).get("detailed", "")
+                    reply_lines.append(f"🎮 {name}（{dist_str}）\n📍 {shop_addr}")
+
+                reply = "\n\n".join(reply_lines) + f"\n\n👉 更多详情请点开：{web_url}"
+                await location_listener.finish(reply)
+
+            except Exception as e:
+                raise
