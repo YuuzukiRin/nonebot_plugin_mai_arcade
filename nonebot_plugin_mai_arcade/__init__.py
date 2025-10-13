@@ -437,32 +437,34 @@ async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
             try:
                 shop_id = re.search(r'/shop/(\d+)', arcade_info['map'][0]).group(1)
                 conn = http.client.HTTPSConnection("nearcade.phizone.cn")
-                conn.request("GET", f"/api/shops/bemanicn/{shop_id}/attendance?reported=false")
+                conn.request("GET", f"/api/shops/bemanicn/{shop_id}/attendance")
                 res = conn.getresponse()
                 if res.status != 200:
                     await sv_arcade.send(f"获取 shop {shop_id} 云端出勤人数失败: {res.status}")
                 raw_data = res.read().decode("utf-8")
                 data = json.loads(raw_data)
                 regnum = data["total"]
-                if regnum == 0:
+                num_list = num_list
+                current_num = sum(num_list)
+                if regnum == current_num:
                     if group_id in block_group:
                         return
-                    num_list = num_list
-                    current_num = sum(num_list)
                     last_updated_by = arcade_info.get("last_updated_by")
                     last_updated_at = arcade_info.get("last_updated_at")
                 else:
+                    cha = current_num - regnum
+                    num_list.clear()
+                    num_list.append(regnum)
+                    current_num = sum(num_list)
                     if group_id in block_group:
                         if data_json[group_id][found_arcade]["alias_list"]:
                             jtname=data_json[group_id][found_arcade]["alias_list"][0]
                         else:
                             jtname=found_arcade
-                        await sv_arcade_on_fullmatch.finish(f"{jtname}+{regnum}")
+                        await sv_arcade_on_fullmatch.finish(f"{jtname}+{cha}")
                     else:
-                        num_list.append(regnum)
-                        current_num = sum(num_list)
-                        last_updated_by = data["registered"]["userId"]
-                        last_updated_at = data["registered"]["attendedAt"]
+                        last_updated_by = "Nearcade"
+                        last_updated_at = "None"
                 if not num_list:
                     await sv_arcade_on_fullmatch.finish(
                         f"[{found_arcade}] 今日人数尚未更新\n你可以爽霸机了\n快去出勤吧！")
