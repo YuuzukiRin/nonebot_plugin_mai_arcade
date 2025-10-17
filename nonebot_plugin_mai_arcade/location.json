@@ -1,0 +1,2 @@
+[CQ:json,data={"app":"com.tencent.map"&#44;"config":{"autosize":false&#44;"ctime":1759590460&#44;"forward":true&#44;"token":"5c55c7b2236ed8d9c922a64af7bc88bc"&#44;"type":"normal"}&#44;"desc":""&#44;"from":1&#44;"meta":{"Location.Search":{"address":"甘肃省兰州市安宁区银安路132-1号"&#44;"enum_relation_type":0&#44;"from":"plusPanel"&#44;"from_account":2448087646&#44;"id":""&#44;"lat":"36.099045"&#44;"lng":"103.729346"&#44;"name":"安宁科教城东 区(长新南路西)"&#44;"uint64_peer_account":308155625}}&#44;"prompt":"&#91;位置&#93;安宁科教城东区(长新南路西)"&#44;"ver":"1.1.2.21"&#44;"view":"LocationShare"}
+]
