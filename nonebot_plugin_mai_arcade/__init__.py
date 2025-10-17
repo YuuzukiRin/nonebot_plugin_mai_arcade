@@ -644,30 +644,34 @@ async def handle_query_updated_arcades(bot: Bot, event: Event, state: T_State):
             res = conn.getresponse()
             if res.status != 200:
                 await sv_arcade.send(f"获取 shop {shop_id} 云端出勤人数失败: {res.status}")
-            raw_data = res.read().decode("utf-8")
-            data = json.loads(raw_data)
-            regnum = data["total"]
-            num_list = arcade_info.get("num", [])
-            current_num = sum(num_list)
-            if regnum == current_num:
-                if group_id in block_group:
-                    return
-                last_updated_by = arcade_info.get("last_updated_by")
-                last_updated_at = arcade_info.get("last_updated_at")
+                num_list = arcade_info.get("num", [])
+                if not num_list:
+                    continue
             else:
-                cha = current_num - regnum
-                num_list.clear()
-                num_list.append(regnum)
+                raw_data = res.read().decode("utf-8")
+                data = json.loads(raw_data)
+                regnum = data["total"]
+                num_list = arcade_info.get("num", [])
                 current_num = sum(num_list)
-                if group_id in block_group:
-                    if arcade_info["alias_list"]:
-                        jtname = arcade_info["alias_list"][0]
-                    else:
-                        jtname = arcade_name
-                    await sv_arcade_on_fullmatch.finish(f"{jtname}+{cha}")
+                if regnum == current_num:
+                    if group_id in block_group:
+                        return
+                    last_updated_by = arcade_info.get("last_updated_by")
+                    last_updated_at = arcade_info.get("last_updated_at")
                 else:
-                    last_updated_by = "Nearcade"
-                    last_updated_at = "None"
+                    cha = current_num - regnum
+                    num_list.clear()
+                    num_list.append(regnum)
+                    current_num = sum(num_list)
+                    if group_id in block_group:
+                        if arcade_info["alias_list"]:
+                            jtname = arcade_info["alias_list"][0]
+                        else:
+                            jtname = arcade_name
+                        await sv_arcade_on_fullmatch.finish(f"{jtname}+{cha}")
+                    else:
+                        last_updated_by = "Nearcade"
+                        last_updated_at = "None"
         except KeyError:
             num_list = arcade_info.get("num", [])
             if not num_list:
@@ -677,7 +681,7 @@ async def handle_query_updated_arcades(bot: Bot, event: Event, state: T_State):
             last_updated_at = arcade_info.get("last_updated_at", "未知时间")
             last_updated_by = arcade_info.get("last_updated_by", "未知用户")
 
-        line = f"[{arcade_name}] {current_num}人 （{last_updated_by} · {last_updated_at}）"
+        line = f"[{arcade_name}] {current_num}人 \n（{last_updated_by} · {last_updated_at}）"
         reply_messages.append(line)
 
     if reply_messages:
