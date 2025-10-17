@@ -378,12 +378,29 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
     except KeyError:
         await sv_arcade.finish(f"[{name}] 当前人数更新为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
 
+    shop_id = re.search(r'/shop/(\d+)', arcade_info['map'][0]).group(1)
+    conn = http.client.HTTPSConnection("nearcade.phizone.cn")
+    conn.request("GET", f"/api/shops/bemanicn/{shop_id}/attendance")
+    res = conn.getresponse()
+    if res.status != 200:
+        await sv_arcade.send(f"获取 shop {shop_id} 云端出勤人数失败: {res.status}")
+    else:
+        raw_data = res.read().decode("utf-8")
+        data = json.loads(raw_data)
+        regnum = data["total"]
+        if regnum == current_num:
+            if group_id in block_group:
+                return
+        else:
+            cha = regnum - current_num
+            new_num = cha + new_num
+            num_list.clear()
+            num_list.append(new_num)
     conn = http.client.HTTPSConnection("nearcade.phizone.cn")
     conn.request("GET", f"/api/shops/bemanicn/{shop_id}")
     res = conn.getresponse()
     if res.status != 200:
         await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {res.status}")
-
     raw_data = res.read().decode("utf-8")
     data = json.loads(raw_data)
     game_id = data["shop"]["games"][0]["gameId"]
