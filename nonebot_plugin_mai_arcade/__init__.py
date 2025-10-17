@@ -2,7 +2,7 @@ import datetime
 import http.client
 import json
 from nonebot.plugin import PluginMetadata
-from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch, on_message
+from nonebot import require, get_driver, on_endswith, on_command, on_regex, on_fullmatch, on_message, logger
 from nonebot.adapters import Bot, Event, Message
 from nonebot.adapters.onebot.v11 import MessageSegment, GroupMessageEvent, MessageEvent
 from nonebot.params import CommandArg, EventMessage
@@ -141,10 +141,10 @@ async def clear_data_daily():
         arcade_marker_file.write_text(json.dumps({'cleared_date': today}, ensure_ascii=False), encoding='utf-8')
     except Exception:
         pass
+                
+    logger.info("arcade缓存清理完成")  
 
-    print("arcade缓存清理完成")
-
-
+    
 @arcade_help.handle()
 async def _(event: GroupMessageEvent, message: Message = EventMessage()):
     await arcade_help.send(
@@ -178,22 +178,23 @@ async def _(event: GroupMessageEvent, message: Message = EventMessage()):
 
 
 @add_alias.handle()
-async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
+async def handle_add_alias(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
-    input_str = event.raw_message.strip()
     group_id = str(event.group_id)
-
-    if not input_str.startswith("添加机厅别名"):
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await add_alias.finish("格式错误：添加机厅别名 <店名> <别名>")
         return
 
-    parts = input_str.split(maxsplit=2)
-    if len(parts) != 3:
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
         await add_alias.finish("格式错误：添加机厅别名 <店名> <别名>")
         return
 
-    _, name, alias = parts
+    name, alias = parts
 
     if group_id in data_json:
         if not is_superuser_or_admin(event):
@@ -221,22 +222,23 @@ async def handle_add_alias(bot: Bot, event: GroupMessageEvent):
 
 
 @delete_alias.handle()
-async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
+async def handle_delete_alias(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
-    input_str = event.raw_message.strip()
     group_id = str(event.group_id)
-
-    if not input_str.startswith("删除机厅别名"):
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await delete_alias.finish("格式错误：删除机厅别名 <店名> <别名>")
         return
 
-    parts = input_str.split(maxsplit=2)
-    if len(parts) != 3:
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
         await delete_alias.finish("格式错误：删除机厅别名 <店名> <别名>")
         return
 
-    _, name, alias = parts
+    name, alias = parts
 
     if group_id in data_json:
         if not is_superuser_or_admin(event):
@@ -263,22 +265,19 @@ async def handle_delete_alias(bot: Bot, event: GroupMessageEvent):
 
 
 @get_arcade_alias.handle()
-async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent):
+async def handle_get_arcade_alias(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
-
-    if not input_str.startswith("机厅别名"):
-        return
-
-    parts = input_str.split(maxsplit=1)
-    if len(parts) != 2:
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await get_arcade_alias.finish("格式错误：机厅别名 <机厅>")
         return
-
-    _, query_name = parts
-
+    
+    query_name = args_text
+ 
     if group_id in data_json:
         found = False
         for name in data_json[group_id]:
@@ -949,19 +948,24 @@ async def handle_function(bot: Bot, event: GroupMessageEvent, name_: Message = C
 
 
 @add_arcade_map.handle()
-async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
+async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
-
-    parts = input_str.split(maxsplit=3)
-    if len(parts) != 3:
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await add_arcade_map.finish("格式错误：添加机厅地图 <机厅名称> <网址>")
         return
-
-    _, name, url = parts
-
+    
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
+        await add_arcade_map.finish("格式错误：添加机厅地图 <机厅名称> <网址>")
+        return
+    
+    name, url = parts
+    
     if group_id in data_json:
         if name not in data_json[group_id]:
             await add_arcade_map.finish(f"机厅 '{name}' 不在群聊中或为机厅别名，请先添加该机厅或使用该机厅本名")
@@ -983,19 +987,24 @@ async def handle_add_arcade_map(bot: Bot, event: GroupMessageEvent):
 
 
 @delete_arcade_map.handle()
-async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
+async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
-
-    parts = input_str.split(maxsplit=3)
-    if len(parts) != 3:
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await delete_arcade_map.finish("格式错误：删除机厅地图 <机厅名称> <网址>")
         return
-
-    _, name, url = parts
-
+    
+    parts = args_text.split(maxsplit=1)
+    if len(parts) != 2:
+        await delete_arcade_map.finish("格式错误：删除机厅地图 <机厅名称> <网址>")
+        return
+    
+    name, url = parts
+    
     if group_id in data_json:
         if not is_superuser_or_admin(event):
             await delete_arcade_map.finish("只有管理员能够删除机厅地图")
@@ -1023,18 +1032,18 @@ async def handle_delete_arcade_map(bot: Bot, event: GroupMessageEvent):
 
 
 @get_arcade_map.handle()
-async def handle_get_arcade_map(bot: Bot, event: GroupMessageEvent):
+async def handle_get_arcade_map(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     global data_json
 
     group_id = str(event.group_id)
-    input_str = event.raw_message.strip()
-
-    parts = input_str.split(maxsplit=1)
-    if len(parts) != 2:
+    
+    # 获取命令参数
+    args_text = args.extract_plain_text().strip()
+    if not args_text:
         await get_arcade_map.finish("格式错误：机厅地图 <机厅名称>")
         return
-
-    _, query_name = parts
+    
+    query_name = args_text
 
     if group_id in data_json:
         found = False
