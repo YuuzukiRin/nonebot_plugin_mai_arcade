@@ -97,7 +97,7 @@ nonebot-plugin-mai-arcade 是一款强大的基于`本地&云端数据`的多功
 </details>
 
 <details>
-<summary><strong>🗺️ 地图系统</strong>：使用<code>mai/（添加）机厅地图</code>指令可添加、查看指定机厅音游地图网址，支持<a href="https://nearcade.org">Nearcade</a>和<a href="https://map.bemanicn.com">BEMANICN全国音游地图</a>
+<summary><strong>🗺️ 地图系统</strong>：使用<code>mai/（添加）机厅地图</code>指令可添加、查看指定机厅音游地图网址，支持<a href="https://nearcade.phizone.cn/">Nearcade</a>和<a href="https://map.bemanicn.com">BEMANICN全国音游地图</a>
 <br><br><strong>（注意：只有添加地图网址的机厅才可以使用云端同步、实时建议功能）</strong></summary>
 
 ![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/mapurl_setup.png)
