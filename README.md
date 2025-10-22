@@ -64,7 +64,7 @@ nonebot-plugin-mai-arcade 是一款强大的基于`本地&云端数据`的多功
 <details>
 <summary><strong>⏰ 实时建议</strong>：查询机厅人数显示最新上报用户及上报时间，从Nearcade同步实时人数信息，同时根据人数和机台信息给出出勤建议</summary>
 
-![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/​live_suggestion.png)
+![image](https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade/blob/main/docs/live_suggestion.png)
 
 </details>
 
