@@ -5,7 +5,7 @@ with open('README.md', encoding="utf-8") as f:
 
 setup(
     name='nonebot-plugin-mai-arcade',
-    version='0.2.0',
+    version='0.2.0.1',
     description='maimai arcade nonebot2 plugin',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -18,6 +18,7 @@ setup(
         'nonebot-plugin-localstore>=0.7.0',
         'nonebot-adapter-onebot>=2.4.4',
         'nonebot-plugin-apscheduler>=0.4.0',
+        'httpx>=0.24.0',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
