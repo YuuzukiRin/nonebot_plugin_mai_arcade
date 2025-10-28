@@ -189,6 +189,11 @@ async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
             return
         else:
             await sv_arcade.finish(f"感谢使用，机厅人数已上传 Nearcade\n{msg}")
+    elif res.status == 400:
+        if group_id in block_group:
+            return
+        else:
+            await sv_arcade.finish(f"似乎在Nearcade上这家店关门了😴\n{msg}")
     else:
         if group_id in block_group:
             return
