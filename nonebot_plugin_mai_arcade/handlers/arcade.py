@@ -16,7 +16,7 @@ from ..services import search_nearcade_shops, auto_add_arcade_map
 
 add_arcade = on_command("添加机厅", priority=10, block=True)
 delete_arcade = on_command("删除机厅", priority=10, block=True)
-show_arcade = on_command("机厅列表", aliases={"机厅"}, priority=10, block=True)
+show_arcade = on_command("机厅列表", aliases={"群机厅"}, priority=10, block=True)
 query_updated_arcades = on_fullmatch(("mai", "机厅人数", "jtj", "机厅几人"), ignorecase=False, priority=10, block=True)
 search_choice = on_regex(r"^[1-6]$", priority=10, block=True)
 
