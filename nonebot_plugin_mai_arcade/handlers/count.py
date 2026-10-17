@@ -1,360 +1,180 @@
 """
 人数管理模块
+
+负责机厅人数的上报、重置与查询，并在更新后把结果同步到 Nearcade。
+纯计算逻辑见 :mod:`nonebot_plugin_mai_arcade.logic`，网络请求见 :mod:`nonebot_plugin_mai_arcade.services`。
 """
-
-import re
-import json
-import math
 import datetime
-import http.client
 
-from nonebot import on_regex, get_plugin_config, on_endswith
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageSegment, Event
-from nonebot.params import T_State
+from nonebot import logger, on_regex, on_endswith
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-from ..config import Config, data_json, re_write_json, block_group
-config = get_plugin_config(Config)
+from ..config import block_group, data_json, plugin_config, re_write_json
+from ..logic import (
+    apply_operator,
+    extract_shop_id,
+    match_arcade,
+    parse_count_command,
+    render_status,
+    render_upload_reply,
+    strip_query_suffix,
+)
+from ..services import (
+    NearcadeError,
+    fetch_attendance,
+    fetch_maimai_game,
+    update_attendance,
+)
 
 
 sv_arcade = on_regex(r"^([\u4e00-\u9fa5\w]+)\s*(==\d+|={1}\d+|\+\+\d+|--\d+|\+\+|--|[+-]?\d+)?$", priority=100)
 sv_arcade_on_fullmatch = on_endswith(("几", "几人", "j"), ignorecase=False, priority=100)
 
 
-@sv_arcade.handle()
-async def handle_sv_arcade(bot: Bot, event: GroupMessageEvent, state: T_State):
-    global data_json
+def _render(name: str, num: int, machine_count: int, **kwargs) -> str:
+    """按 .env 里的 COUNT_SMART_TIPS 渲染状态文本。"""
+    return render_status(name, num, machine_count, tips=plugin_config.count_smart_tips, **kwargs)
 
-    input_str = event.raw_message.strip()
+
+@sv_arcade.handle()
+async def handle_sv_arcade(event: GroupMessageEvent):
+    """处理 ``<机厅名>++/--/+num/=num`` 形式的人数更新。"""
     group_id = str(event.group_id)
     current_time = datetime.datetime.now().strftime("%H:%M")
 
-    pattern = re.compile(r'^([\u4e00-\u9fa5\w]+?)([+\-=]{0,2})(\d*)$')
-    match = pattern.match(input_str)
-    if not match:
+    parsed = parse_count_command(event.raw_message)
+    if parsed is None:
         return
-
-    name, op, num_str = match.groups()
-    num = int(num_str) if num_str else None
+    name, op, num = parsed
 
     if (not op) and (num is None):
         return
 
-    if group_id not in data_json:
+    matched_name = match_arcade(data_json.get(group_id) or {}, name)
+    if matched_name is None:
         return
 
-    found = False
-    if name in data_json[group_id]:
-        found = True
-    else:
-        for arcade_name, arcade_info in data_json[group_id].items():
-            if "alias_list" in arcade_info and name in arcade_info["alias_list"]:
-                name = arcade_name
-                found = True
-                break
-
-    if not found:
-        return
-
-    arcade_data = data_json[group_id][name]
+    arcade_data = data_json[group_id][matched_name]
     num_list = arcade_data.setdefault("num", [])
     current_num = sum(num_list) if num_list else 0
 
-    if op in ("++", "+"):
-        delta = num if num else 1
-        if abs(delta) > 50:
-            await sv_arcade.finish("检测到非法数值，拒绝更新")
-        new_num = current_num + delta
-        if new_num < 0 or new_num > 100:
-            await sv_arcade.finish("检测到非法数值，拒绝更新")
-    elif op in ("--", "-"):
-        delta = -(num if num else 1)
-        if abs(delta) > 50:
-            await sv_arcade.finish("检测到非法数值，拒绝更新")
-        new_num = current_num + delta
-        if new_num < 0 or new_num > 100:
-            await sv_arcade.finish("检测到非法数值，拒绝更新")
-    elif op in ("==", "=") or (op == "" and num is not None):
-        new_num = num
-        if new_num < 0 or new_num > 100:
-            await sv_arcade.finish("检测到非法数值，拒绝更新")
-        delta = 0
-        num_list.clear()
-        num_list.append(new_num)
-    else:
+    try:
+        new_num, delta = apply_operator(op, num, current_num)
+    except ValueError as e:
+        await sv_arcade.finish(str(e))
         return
 
-    if op in ("++", "+", "--", "-"):
+    if delta:
         num_list.append(delta)
+    else:
+        num_list.clear()
+        num_list.append(new_num)
+
     arcade_data["last_updated_by"] = event.sender.nickname
     arcade_data["last_updated_at"] = current_time
     arcade_data.pop("previous_update_by", None)
     arcade_data.pop("previous_update_at", None)
     await re_write_json()
 
-    try:
-        shop_id = re.search(r'/(\d+)/?$', arcade_data['map'][0]).group(1)
-    except KeyError:
-        await sv_arcade.finish(f"[{name}] 当前人数更新为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+    maps = arcade_data.get("map") or []
+    shop_id = extract_shop_id(maps[0]) if maps else None
+    if shop_id is None:
+        # 没有配置地图链接：只更新本地人数
+        await sv_arcade.finish(f"[{matched_name}] 当前人数更新为 {new_num}\n由 {event.sender.nickname} 于 {current_time} 更新")
+        return
 
-    shop_id = re.search(r'/(\d+)/?$', arcade_data['map'][0]).group(1)
-    conn = http.client.HTTPSConnection("nearcade.cn")
-    conn.request("GET", f"/api/shops/bemanicn/{shop_id}/attendance")
-    res = conn.getresponse()
-    if res.status != 200:
-        await sv_arcade.send(f"获取 shop {shop_id} 云端出勤人数失败: {res.status}")
-    else:
-        raw_data = res.read().decode("utf-8")
-        data = json.loads(raw_data)
-        regnum = data["total"]
-        if regnum == current_num:
-            if group_id in block_group:
-                return
-        else:
-            cha = regnum - current_num
-            new_num = cha + new_num
-            num_list.clear()
-            num_list.append(new_num)
-    conn = http.client.HTTPSConnection("nearcade.cn")
-    conn.request("GET", f"/api/shops/bemanicn/{shop_id}")
-    res = conn.getresponse()
-    if res.status != 200:
-        await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {res.status}")
-    raw_data = res.read().decode("utf-8")
-    data = json.loads(raw_data)
-    game_id = data["shop"]["games"][0]["gameId"]
-    coutnum = 0
-    for game in data["shop"]["games"]:
-        if game["name"] == "maimai DX":
-            coutnum = game.get("quantity", 1)
-    arcade_data["coutnum"] = coutnum
+    # 与云端人数对齐：把云端的增量叠加到本地人数上
+    try:
+        cloud_num = await fetch_attendance(shop_id)
+    except (NearcadeError, ValueError) as e:
+        logger.warning(f"获取 shop {shop_id} 云端出勤人数失败: {e}")
+        cloud_num = None
+    if cloud_num is not None and cloud_num != current_num:
+        new_num += cloud_num - current_num
+        num_list.clear()
+        num_list.append(new_num)
+
+    try:
+        game_id, machine_count = await fetch_maimai_game(shop_id)
+    except (NearcadeError, ValueError) as e:
+        await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: {e}")
+        return
+
+    if game_id is None:
+        await sv_arcade.finish(f"获取 shop {shop_id} 信息失败: 未找到可用机台")
+        return
+
+    arcade_data["coutnum"] = machine_count
     await re_write_json()
 
-    per_round_minutes = 16
-    players_per_round = max(int(coutnum), 1) * 2  # 每轮最多游玩人数（至少按1台计算）
-    queue_num = max(int(new_num) - players_per_round, 0)  # 等待人数（不包含正在玩的这一轮）
+    msg = _render(matched_name, new_num, machine_count, verb="人数已更新为")
 
-    if queue_num > 0:
-        expected_rounds = queue_num / players_per_round  # 平均轮数（允许小数）
-        min_rounds = queue_num // players_per_round  # 乐观整数轮（可能为0）
-        max_rounds = math.ceil(queue_num / players_per_round)  # 保守整数轮
-
-        wait_time_avg = round(expected_rounds * per_round_minutes)
-        wait_time_min = int(min_rounds * per_round_minutes)
-        wait_time_max = int(max_rounds * per_round_minutes)
-
-        smart_tip = config.count_smart_tips[-1].tip
-        for rule in config.count_smart_tips:
-            if wait_time_avg <= rule.max_minutes:
-                smart_tip = rule.tip
-                break
-
-        msg = (
-            f"📍 {name}  人数已更新为 {new_num}\n"
-            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
-            f"⌛ 预计等待：约 {wait_time_avg} 分钟\n"
-            f"   ↳ 范围：{wait_time_min}~{wait_time_max} 分钟（{min_rounds}~{max_rounds} 轮）\n\n"
-            f"💡 {smart_tip}"
-        )
-    else:
-        smart_tip = config.count_smart_tips[0].tip
-        msg = (
-            f"📍 {name}  人数已更新为 {new_num}\n"
-            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
-            f"{smart_tip}"
-        )
-
-    payload = json.dumps({
-        "games": [
-            {"id": game_id, "currentAttendances": new_num}
-        ]
-    })
-    headers = {
-        f'Authorization': f'Bearer {config.nearcade_api_token}',
-        'Content-Type': 'application/json'
-    }
-
+    upload_error = None
     try:
-        conn = http.client.HTTPSConnection("nearcade.cn", timeout=10)
-        conn.request("POST", f"/api/shops/bemanicn/{shop_id}/attendance", payload, headers)
-        res = conn.getresponse()
-        raw_data = res.read().decode("utf-8")
-    except Exception as e:
-        raw_data = str(e)
-        res = None
+        await update_attendance(shop_id, game_id, new_num)
+    except NearcadeError as e:
+        upload_error = e
 
-    if res is not None and res.status == 200:
-        if group_id in block_group:
-            return
-        else:
-            await sv_arcade.finish(f"感谢使用，机厅人数已上传 Nearcade\n{msg}")
-    elif res.status == 400:
-        if group_id in block_group:
-            return
-        else:
-            await sv_arcade.finish(f"似乎在Nearcade上这家店关门了😴\n{msg}")
-    else:
-        if group_id in block_group:
-            return
-        status_text = res.status if res is not None else "请求失败"
-        await sv_arcade.finish(f"上传失败: {status_text}\n返回信息: {raw_data}\n\n{msg}")
+    if group_id in block_group:
+        # 调试群只更新数据，不回复
+        return
+
+    await sv_arcade.finish(render_upload_reply(msg, upload_error))
 
 
 @sv_arcade_on_fullmatch.handle()
-async def handle_sv_arcade_on_fullmatch(bot: Bot, event: Event, state: T_State):
-    global data_json
-
-    input_str = event.raw_message.strip()
+async def handle_sv_arcade_on_fullmatch(event: GroupMessageEvent):
+    """处理 ``<机厅名>几人`` / ``几`` / ``j``，展示云端最新人数与等待建议。"""
     group_id = str(event.group_id)
 
-    # 使用on_endswith后，直接提取机厅名称部分
-    if input_str.endswith("几人"):
-        name_part = input_str[:-2].strip()
-    elif input_str.endswith("几"):
-        name_part = input_str[:-1].strip()
-    elif input_str.endswith("j"):
-        name_part = input_str[:-1].strip()
-    else:
+    name_part = strip_query_suffix(event.raw_message)
+    if name_part is None:
         return
 
-    if group_id in data_json:
-        found_arcade = None
-        if name_part in data_json[group_id]:
-            found_arcade = name_part
-        else:
-            for arcade_name, arcade_info in data_json[group_id].items():
-                alias_list = arcade_info.get("alias_list", [])
-                if name_part in alias_list:
-                    found_arcade = arcade_name
-                    break
+    arcade_name = match_arcade(data_json.get(group_id) or {}, name_part)
+    if arcade_name is None:
+        return
 
-        if found_arcade:
-            arcade_info = data_json[group_id][found_arcade]
-            num_list = arcade_info.setdefault("num", [])
-            try:
-                shop_id = re.search(r'/(\d+)/?$', arcade_info['map'][0]).group(1)
-                conn = http.client.HTTPSConnection("nearcade.cn")
-                conn.request("GET", f"/api/shops/bemanicn/{shop_id}/attendance")
-                res = conn.getresponse()
-                if res.status != 200:
-                    await sv_arcade_on_fullmatch.finish(f"获取 shop {shop_id} 云端出勤人数失败: {res.status}")
-                raw_data = res.read().decode("utf-8")
-                data = json.loads(raw_data)
-                regnum = data["total"]
-                num_list = num_list
-                current_num = sum(num_list)
-                if regnum == current_num:
-                    if group_id in block_group:
-                        return
-                    last_updated_by = arcade_info.get("last_updated_by")
-                    last_updated_at = arcade_info.get("last_updated_at")
-                else:
-                    cha = current_num - regnum
-                    num_list.clear()
-                    num_list.append(regnum)
-                    current_num = sum(num_list)
-                    if group_id in block_group:
-                        if arcade_info.get("alias_list"):
-                            jtname = arcade_info["alias_list"][0]
-                        else:
-                            jtname = found_arcade
-                        await sv_arcade_on_fullmatch.finish(f"{jtname}+{cha}")
-                    else:
-                        last_updated_by = "Nearcade"
-                        last_updated_at = "None"
-                if not num_list:
-                    await sv_arcade_on_fullmatch.finish(
-                        f"[{found_arcade}] 今日人数尚未更新\n你可以爽霸机了\n快去出勤吧！")
-                else:
-                    coutnum = arcade_info.get("coutnum", 1)
-                    per_round_minutes = 16
-                    players_per_round = max(int(coutnum), 1) * 2  # 每轮最多游玩人数（至少按1台计算）
-                    queue_num = max(int(current_num) - players_per_round, 0)  # 等待人数（不包含正在玩的这一轮）
+    arcade_info = data_json[group_id][arcade_name]
+    num_list = arcade_info.setdefault("num", [])
+    maps = arcade_info.get("map") or []
+    shop_id = extract_shop_id(maps[0]) if maps else None
 
-                    if queue_num > 0:
-                        expected_rounds = queue_num / players_per_round
-                        min_rounds = queue_num // players_per_round
-                        max_rounds = math.ceil(queue_num / players_per_round)
+    current_num = sum(num_list)
+    machine_count = arcade_info.get("coutnum", 1)
+    last_updated_by = arcade_info.get("last_updated_by")
+    last_updated_at = arcade_info.get("last_updated_at")
 
-                        wait_time_avg = round(expected_rounds * per_round_minutes)
-                        wait_time_min = int(min_rounds * per_round_minutes)
-                        wait_time_max = int(max_rounds * per_round_minutes)
-
-                        smart_tip = config.count_smart_tips[-1].tip
-                        for rule in config.count_smart_tips:
-                            if wait_time_avg <= rule.max_minutes:
-                                smart_tip = rule.tip
-                                break
-
-                        msg = (
-                            f"📍 {found_arcade}  人数为 {current_num}\n"
-                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
-                            f"⌛ 预计等待：约 {wait_time_avg} 分钟\n"
-                            f"   ↳ 范围：{wait_time_min}~{wait_time_max} 分钟（{min_rounds}~{max_rounds} 轮）\n\n"
-                            f"💡 {smart_tip}"
-                        )
-                    else:
-                        smart_tip = config.count_smart_tips[0].tip
-                        msg = (
-                            f"📍 {found_arcade}  人数为 {current_num}\n"
-                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
-                            f"{smart_tip}"
-                        )
-
-                    if last_updated_at and last_updated_by:
-                        msg += f"\n（{last_updated_by} · {last_updated_at}）"
-
-                    await sv_arcade_on_fullmatch.finish(msg)
-            except KeyError:
-                if not num_list:
-                    await sv_arcade_on_fullmatch.finish(
-                        f"[{found_arcade}] 今日人数尚未更新\n你可以爽霸机了\n快去出勤吧！")
-                else:
-                    current_num = sum(num_list)
-                    last_updated_by = arcade_info.get("last_updated_by")
-                    last_updated_at = arcade_info.get("last_updated_at")
-                    await re_write_json()
-                    coutnum = arcade_info.get("coutnum", 1)
-                    per_round_minutes = 16
-                    players_per_round = max(int(coutnum), 1) * 2  # 每轮最多游玩人数（至少按1台计算）
-                    queue_num = max(int(current_num) - players_per_round, 0)  # 等待人数（不包含正在玩的这一轮）
-
-                    if queue_num > 0:
-                        expected_rounds = queue_num / players_per_round
-                        min_rounds = queue_num // players_per_round
-                        max_rounds = math.ceil(queue_num / players_per_round)
-
-                        wait_time_avg = round(expected_rounds * per_round_minutes)
-                        wait_time_min = int(min_rounds * per_round_minutes)
-                        wait_time_max = int(max_rounds * per_round_minutes)
-
-                        smart_tip = config.count_smart_tips[-1].tip
-                        for rule in config.count_smart_tips:
-                            if wait_time_avg <= rule.max_minutes:
-                                smart_tip = rule.tip
-                                break
-
-                        msg = (
-                            f"📍 {found_arcade}  人数为 {current_num}\n"
-                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
-                            f"⌛ 预计等待：约 {wait_time_avg} 分钟\n"
-                            f"   ↳ 范围：{wait_time_min}~{wait_time_max} 分钟（{min_rounds}~{max_rounds} 轮）\n\n"
-                            f"💡 {smart_tip}"
-                        )
-                    else:
-                        smart_tip = config.count_smart_tips[0].tip
-                        msg = (
-                            f"📍 {found_arcade}  人数为 {current_num}\n"
-                            f"🕹️ 机台数量：{coutnum} 台（每轮 {players_per_round} 人）\n\n"
-                            f"{smart_tip}"
-                        )
-
-                    if last_updated_at and last_updated_by:
-                        msg += f"\n（{last_updated_by} · {last_updated_at}）"
-
-                    await sv_arcade_on_fullmatch.finish(msg)
-        else:
-            # await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在机厅或机厅别名 '{name_part}'")
+    if shop_id is not None:
+        try:
+            cloud_num = await fetch_attendance(shop_id)
+        except (NearcadeError, ValueError) as e:
+            await sv_arcade_on_fullmatch.finish(f"获取 shop {shop_id} 云端出勤人数失败: {e}")
             return
-    else:
-        # await sv_arcade_on_fullmatch.finish(f"群聊 '{group_id}' 中不存在任何机厅")
-        return
+
+        if cloud_num != current_num:
+            num_list.clear()
+            num_list.append(cloud_num)
+            current_num = cloud_num
+            last_updated_by, last_updated_at = "Nearcade", None
+            await re_write_json()
+
+        try:
+            _, machine_count = await fetch_maimai_game(shop_id)
+            arcade_info["coutnum"] = machine_count
+            await re_write_json()
+        except (NearcadeError, ValueError) as e:
+            logger.warning(f"获取 shop {shop_id} 机台信息失败: {e}")
+
+    if not num_list:
+        await sv_arcade_on_fullmatch.finish(f"[{arcade_name}] 今日人数尚未更新\n你可以爽霸机了\n快去出勤吧！")
+
+    await sv_arcade_on_fullmatch.finish(
+        _render(
+            arcade_name,
+            current_num,
+            machine_count,
+            updated_by=last_updated_by,
+            updated_at=last_updated_at,
+        )
+    )
