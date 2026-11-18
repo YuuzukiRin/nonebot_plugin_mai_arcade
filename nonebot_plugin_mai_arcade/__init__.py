@@ -12,7 +12,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.params import EventMessage
 
-from .config import data_json, re_write_json, arcade_marker_file
+from .config import Config, data_json, re_write_json, arcade_marker_file
 from .handlers import arcade, queue, alias, maps, admin, count
 from .services import call_discover
 
@@ -23,6 +23,7 @@ __plugin_meta__ = PluginMetadata(
     usage="使用 机厅help 指令获取使用说明",
     type="application",
     homepage="https://github.com/YuuzukiRin/nonebot_plugin_mai_arcade",
+    config=Config,
     supported_adapters={"~onebot.v11"},
 )
 
@@ -134,36 +135,36 @@ location_listener = on_message(priority=100, block=False)
 async def handle_location_listener(event: MessageEvent):
     """处理位置消息，自动发现附近机厅"""
     for seg in event.message:
-        if seg.type == "json":
-            try:
-                # 解析 CQ:json 的 data
-                cq_data = json.loads(seg.data["data"])
-                location = cq_data.get("meta", {}).get("Location.Search", {})
+        if seg.type != "json":
+            continue
 
-                lat = float(location.get("lat", 0))
-                lon = float(location.get("lng", 0))
-                title = location.get("name", "未知位置")
+        try:
+            # 解析 CQ:json 的 data
+            cq_data = json.loads(seg.data["data"])
+        except (AttributeError, KeyError, ValueError):
+            continue
 
-                if not lat or not lon:
-                    raise Exception("<UNK>")
+        location = cq_data.get("meta", {}).get("Location.Search", {})
+        lat = float(location.get("lat", 0) or 0)
+        lon = float(location.get("lng", 0) or 0)
+        if not lat or not lon:
+            continue
 
-                result, web_url = await call_discover(lat, lon, radius=10, name=title)
+        title = location.get("name", "未知位置")
+        result, web_url = await call_discover(lat, lon, radius=10, name=title)
 
-                shops = result.get("shops", [])
-                if not shops:
-                    await location_listener.finish(f"附近没有找到机厅\n👉 详情可查看：{web_url}")
-                    return
+        shops = result.get("shops", [])
+        if not shops:
+            await location_listener.finish(f"附近没有找到机厅\n👉 详情可查看：{web_url}")
+            return
 
-                reply_lines = []
-                for shop in shops[:3]:  # 只展示 3 个，避免刷屏
-                    name = shop.get("name", "未知机厅")
-                    dist_val = shop.get("distance", 0)
-                    dist_str = f"{dist_val * 1000:.0f}米" if isinstance(dist_val, (int, float)) else "未知距离"
-                    shop_addr = shop.get("address", {}).get("detailed", "")
-                    reply_lines.append(f"🎮 {name}（{dist_str}）\n📍 {shop_addr}")
+        reply_lines = []
+        for shop in shops[:3]:  # 只展示 3 个，避免刷屏
+            shop_name = shop.get("name", "未知机厅")
+            dist_val = shop.get("distance", 0)
+            dist_str = f"{dist_val * 1000:.0f}米" if isinstance(dist_val, (int, float)) else "未知距离"
+            shop_addr = shop.get("address", {}).get("detailed", "")
+            reply_lines.append(f"🎮 {shop_name}（{dist_str}）\n📍 {shop_addr}")
 
-                reply = "\n\n".join(reply_lines) + f"\n\n👉 更多详情请点开：{web_url}"
-                await location_listener.finish(reply)
-
-            except Exception as e:
-                raise
+        reply = "\n\n".join(reply_lines) + f"\n\n👉 更多详情请点开：{web_url}"
+        await location_listener.finish(reply)

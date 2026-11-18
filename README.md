@@ -110,16 +110,19 @@ nonebot-plugin-mai-arcade 是一款强大的基于`本地&云端数据`的多功
 nonebot_plugin_mai_arcade/
 ├── __init__.py          # 主入口文件
 ├── config.py           # 配置管理
+├── logic.py            # 人数计算等纯逻辑（不依赖 NoneBot，可直接单测）
 ├── utils.py            # 工具函数
-├── services.py         # 外部API服务
-└── handlers/           # 功能模块
-    ├── __init__.py
-    ├── arcade.py       # 机厅管理
-    ├── queue.py        # 排卡管理
-    ├── alias.py        # 别名管理
-    ├── maps.py         # 地图管理
-    ├── count.py        # 人数统计
-    └── admin.py        # 管理员功能
+├── services.py         # 外部API服务（Nearcade 请求全部走这里）
+├── handlers/           # 功能模块
+│   ├── __init__.py
+│   ├── arcade.py       # 机厅管理
+│   ├── queue.py        # 排卡管理
+│   ├── alias.py        # 别名管理
+│   ├── maps.py         # 地图管理
+│   ├── count.py        # 人数统计
+│   └── admin.py        # 管理员功能
+└── tests/              # 单元测试
+    └── test_logic.py
 ```
 
 ## 💿 安装
@@ -161,17 +164,25 @@ clone 本项目，将nonebot_plugin_mai_arcade文件夹放入您的nonebot2插�
 
 ## ⚙️ 配置
 
-在 NoneBot2 项目的 `.env` 文件中添加以下可选配置项（不填则使用默认值）：
+在 NoneBot2 项目的 `.env` 文件中添加以下配置项：
 
 ```env
-# Nearcade API 令牌（不填则使用默认token）
-NEARCADE_API_TOKEN=your_token_here
+# Nearcade API 令牌，用于「人数上报」时把人数同步到 Nearcade 云端。
+# 生成地址：https://nearcade.cn/settings/api-tokens （登录后创建，形如 nk_xxxx）
+# 必填：不配置时人数仍会正常统计与落盘，只是不会上传到 Nearcade，
+# 上报时会提示「尚未配置 Nearcade API Token」。
+NEARCADE_API_TOKEN=nk_你的令牌
 
 # 排队等待时间提示语（可选，不填使用默认值）
 # 规则列表按 max_minutes 升序排列，匹配第一个 wait_time_avg <= max_minutes 的规则
 # max_minutes=0 表示无需等待时的提示
 COUNT_SMART_TIPS='[{"max_minutes": 0, "tip": "✅ 无需等待，快去出勤吧！"}, {"max_minutes": 20, "tip": "✅ 舞萌启动！"}, {"max_minutes": 40, "tip": "🕰️ 小排队还能忍"}, {"max_minutes": 90, "tip": "💀 DBD，纯折磨，建议换店"}, {"max_minutes": 9999, "tip": "🪦 建议回家（或者明天再来）"}]'
 ```
+
+| 配置项 | 类型 | 是否必填 | 说明 |
+| --- | --- | --- | --- |
+| `NEARCADE_API_TOKEN` | `str` | **必填** | Nearcade API 令牌。在 <https://nearcade.cn/settings/api-tokens> 生成后填入。 |
+| `COUNT_SMART_TIPS` | `list` | 否 | 等待时间提示规则，不填使用默认值。 |
 
 ## 🎉 使用
 
